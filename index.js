@@ -7,8 +7,8 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Change '*' to '(.*)' for Express 5 compatibility
-app.get('(.*)', (req, res) => {
+// Express 5 compliant catch-all route
+app.get('/{*splat}', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
