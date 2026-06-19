@@ -47,7 +47,6 @@ input,select{background:var(--dark);border:1px solid rgba(255,109,35,.3);color:v
 .build-summary{position:sticky;top:60px;background:rgba(255,109,35,.07);border:1px solid rgba(255,109,35,.25);padding:12px;margin-bottom:12px;font-size:11px}
 .progress-bar{height:6px;background:rgba(255,109,35,.1);margin-top:6px}
 .progress-fill{height:100%;background:var(--or)}
-/* GAME BOARD */
 #board{display:flex;flex-direction:column;gap:8px;padding:10px}
 .opp-strip{background:rgba(13,10,7,.6);border:1px solid rgba(255,109,35,.1);padding:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .opp-name{font-family:'Bebas Neue',cursive;font-size:13px;color:var(--or);min-width:90px}
