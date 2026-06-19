@@ -512,119 +512,156 @@ window.copyCode=function(){const url=window.location.origin+window.location.path
 window.showZoom=function(cid){S.zoomCid=cid;render();};
 window.closeZoom=function(){S.zoomCid=null;render();};
 
-/* RENDER */
+
+/* ═══ RENDER — TCG ARENA TABLE STYLE ═══ */
 function pendingForMe(gp){return gp.pending&&gp.pending.forId===S.myId?gp.pending:null;}
+
+function artImg(cid,cls){
+  /* CIMG is the mapping object — starts empty, updated by image-mapper tool */
+  const fn=CIMG&&CIMG[cid];
+  const src=fn?IMG_BASE+fn:null;
+  const c=CARDS[cid];const fb=c&&FBG[c.faction]||'#0b0f14';
+  return src
+    ?`<img class="${cls}" src="${src}" loading="lazy" onerror="this.onerror=null;this.style.background='${fb}';this.removeAttribute('src')" alt="">`
+    :`<div class="${cls}-fb" style="background:${fb}"></div>`;
+}
 
 function bCard(gp,uid,opts){
   opts=opts||{};const{myTurn,pend,isOpp}=opts;
   const i=gp.inst[uid];if(!i)return'';
   const s=instSummary(gp,uid);if(!s||s.dead)return'';
-  const c=CARDS[i.cid];const fCol=FCOL[c.faction]||'#ccc';
+  const c=CARDS[i.cid];const fCol=FCOL[c.faction]||'#888';
   const isAtkTgt=!!(S.attackPick&&gp.inst[S.attackPick]&&validDefenders(gp,gp.inst[S.attackPick].owner,gp.inst[S.attackPick].cid).includes(uid));
   const isPendTgt=!!(pend&&pend.kind==='target'&&(pend.valid||[]).includes(uid));
   const clickable=isAtkTgt||isPendTgt;
-  let cls='bcard'+(s.kind==='boss'?' bcard-boss':'')+(s.tapped?' bcard-tapped':'')+(clickable?' bcard-target':'');
+  let cls='bcard'+(s.kind==='boss'?' is-boss':'')+(s.tapped?' is-tapped':'')+(clickable?' is-target':'')+(s.keywords.includes('Stunned')?' is-stun':'');
   const clickFn=isAtkTgt?`confirmAttack('${uid}')`:(isPendTgt?`resolvePending('${uid}')`:null);
+  const wNames=(i.wielded||[]).filter(wu=>gp.inst[wu]).map(wu=>CARDS[gp.inst[wu].cid].name).join(', ');
   let actBtns='';
   if(!isOpp&&myTurn&&!pend&&!S.attackPick){
-    if(!s.tapped)actBtns+=`<button class="bcard-btn atk-btn" onclick="startAttack('${uid}')">&#9876; Attack</button>`;
-    (c.activated||[]).forEach((ab,idx)=>{actBtns+=`<button class="bcard-btn ab-btn" onclick="useAbility('${uid}',${idx})" title="${ab.label}">${ab.label.slice(0,18)}</button>`;});
-    (i.wielded||[]).forEach(wu=>{const wc=CARDS[gp.inst[wu].cid];([...(wc.weaponActivated||[]),(wc.grantsActivated||[])]).flat().forEach((ab,ai)=>{actBtns+=`<button class="bcard-btn ab-btn" onclick="useAbility('${uid}','w${wu}${ai}')" title="${ab.label}">${ab.label.slice(0,18)}</button>`;});});
+    if(!s.tapped)actBtns+=`<button class="bcard-btn atk-btn" onclick="startAttack('${uid}')">&#9876; ATK</button>`;
+    (c.activated||[]).forEach((ab,idx)=>{actBtns+=`<button class="bcard-btn ab-btn" onclick="useAbility('${uid}',${idx})" title="${ab.label}">${ab.label.slice(0,16)}</button>`;});
+    (i.wielded||[]).filter(wu=>gp.inst[wu]).forEach(wu=>{const wc=CARDS[gp.inst[wu].cid];([...(wc.weaponActivated||[]),(wc.grantsActivated||[])]).flat().forEach((ab,ai)=>{actBtns+=`<button class="bcard-btn ab-btn" onclick="useAbility('${uid}','w${wu}${ai}')" title="${ab.label}">${ab.label.slice(0,16)}</button>`;});});
   }
-  const wNames=(i.wielded||[]).map(wu=>CARDS[gp.inst[wu].cid].name).join(', ');
-  return`<div class="${cls}" style="border-color:${clickable?'var(--ap)':fCol+'44'}"${clickFn?` onclick="${clickFn}"`:''}
+  return`<div class="zone-wrap"><div class="${cls}" style="border-color:${clickable?'var(--ap)':fCol+'40'}"${clickFn?` onclick="${clickFn}"`:''}
     oncontextmenu="showZoom('${i.cid}');return false">
     ${artImg(i.cid,'bcard-art')}
-    <div class="bcard-body">
-      <div class="bcard-name">${s.name}</div>
-      <div class="bcard-stats"><span class="bcard-hp">&#10084;${s.hp}/${s.maxHp}</span><span class="bcard-atk">&#9876;${s.atk}</span></div>
+    <div class="bcard-strip">
+      <div class="bcard-name" style="color:${fCol}">${s.name}</div>
+      <div class="bcard-stats"><span class="b-hp">&#10084;${s.hp}/${s.maxHp}</span><span class="b-atk">&#9876;${s.atk}</span></div>
       ${s.keywords.length?`<div class="bcard-kw">${s.keywords.map(k=>`<span class="bdg${k==='Enforcer'?' en':k==='Stunned'?' st':''}">${k.slice(0,3)}</span>`).join('')}</div>`:''}
-      ${wNames?`<div class="bcard-weapons">&#9876;${wNames}</div>`:''}
-      ${actBtns?`<div class="bcard-acts">${actBtns}</div>`:''}
+      ${wNames?`<div class="bcard-wield">&#128481;${wNames}</div>`:''}
     </div>
-  </div>`;
+    ${actBtns?`<div class="bcard-acts">${actBtns}</div>`:''}
+  </div><div class="zone-tag">${s.kind==='boss'?'BOSS':c.type==='weapon'?'WPN':'FTR'}</div></div>`;
 }
 
 function hCard(gp,uid,myTurn,pend){
   const i=gp.inst[uid];if(!i)return'';const c=CARDS[i.cid];
-  const fCol=FCOL[c.faction]||'#ccc';
-  const canPlay=(myTurn&&gp.p[S.myId].coins>=(c.cost||0)&&(!c.level||c.level<=gp.level)&&!pend&&!S.attackPick);
+  const fCol=FCOL[c.faction]||'#888';
+  const canPlay=myTurn&&gp.p[S.myId].coins>=(c.cost||0)&&(!c.level||c.level<=gp.level)&&!pend&&!S.attackPick;
   const isInstant=c.speed==='instant'&&gp.p[S.myId].coins>=(c.cost||0)&&!pend;
   const playable=canPlay||isInstant;
-  const typeStr=c.type==='fighter'?`FIGHTER L${c.level||'?'}`:c.type==='weapon'?`WEAPON L${c.level||'?'}`:c.type==='response'?'RESPONSE &#9889;':c.type.toUpperCase();
-  return`<div class="hcard${playable?'':' hcard-unplayable'}"
+  const typeChar=c.type==='fighter'?'F':c.type==='weapon'?'W':c.type==='tactic'?'T':'R';
+  return`<div class="hcard${playable?'':' unplayable'}" style="border-color:${fCol}55"
     ${playable?`onclick="playHandCard('${uid}')"`:''}
     oncontextmenu="showZoom('${i.cid}');return false">
     ${artImg(i.cid,'hcard-art')}
     <div class="hcard-body">
       <div class="hcard-name" style="color:${fCol}">${c.name}</div>
-      <div class="hcard-type">${typeStr}</div>
-      <div class="hcard-text">${(c.text||'').slice(0,90)}</div>
+      <div class="hcard-meta">${typeChar}${c.level?c.level:''} ${c.faction?c.faction.slice(0,3).toUpperCase():''}</div>
     </div>
     <div class="hcard-cost">${c.cost||0}</div>
-    ${isInstant&&!canPlay?'<div class="hcard-instant-badge">INSTANT</div>':''}
+    ${c.level?`<div class="hcard-level">L${c.level}</div>`:''}
+    ${isInstant&&!canPlay?'<div class="hcard-instant">INST</div>':''}
+  </div>`;
+}
+
+function bossHpPct(gp,pid){const b=gp.inst[gp.p[pid].boss];if(!b)return 0;return(b.hp/b.maxHp)*100;}
+
+function playerStrip(gp,pid,isOpp){
+  const p=gp.p[pid];const b=gp.inst[p.boss];
+  const bBoss=b&&CARDS[b.cid];const bName=bBoss?bBoss.name:p.name;
+  const isMyTurn=gp.curIdx===gp.order.indexOf(pid);
+  const pct=bossHpPct(gp,pid);
+  const hpLow=pct<35;
+  return`<div class="player-strip${isOpp?' opp':''}">
+    <div>
+      <div class="player-name${isMyTurn?' is-turn':''}">${p.name}${p.defeated?' &#128128;':''}</div>
+      <div class="small" style="font-size:8px;color:var(--dim)">${bName}</div>
+    </div>
+    <div class="hp-bar-wrap">
+      <div class="hp-label">BOSS</div>
+      <div class="hp-bar"><div class="hp-fill${hpLow?' low':pct===100?' full':''}" style="width:${pct}%"></div></div>
+      <div class="hp-num">${b?b.hp:'?'}/${b?b.maxHp:'?'}</div>
+    </div>
+    ${!isOpp?`<div class="coin-badge">${p.coins}&#9711;</div>`:''}
+    <div class="deck-count">&#127831;${p.deck.length}</div>
+    <div class="hand-count">&#9997;${p.hand.length}</div>
+    <div class="grv-count">&#128682;${p.grave.length}</div>
+    ${isMyTurn&&!isOpp?'<div style="width:6px;height:6px;border-radius:50%;background:var(--ap);animation:tgt-pulse 1s infinite;flex-shrink:0"></div>':''}
   </div>`;
 }
 
 function renderZoom(){
   const cid=S.zoomCid;if(!cid||!CARDS[cid])return'';
-  const c=CARDS[cid];const fCol=FCOL[c.faction]||'#ccc';
-  const typeStr=c.type==='boss'?'BOSS':c.type==='fighter'?`FIGHTER \u00b7 LVL ${c.level||'?'}`:c.type==='weapon'?`WEAPON \u00b7 LVL ${c.level||'?'}`:c.type.toUpperCase()+(c.speed?` \u00b7 ${c.speed.toUpperCase()}`:'');
-  return`<div class="zoom-overlay" onclick="closeZoom()">
-    <div class="zoom-card" onclick="event.stopPropagation()">
-      ${artImg(cid,'zoom-art')}
-      <div class="zoom-body">
-        <div class="zoom-name" style="color:${fCol}">${c.name}</div>
-        <div class="zoom-meta" style="color:${fCol}">${(c.faction||'').toUpperCase()} \u00b7 ${typeStr}${c.sub?' \u00b7 '+c.sub:''}</div>
-        ${(c.hp||c.atk||c.cost!==undefined)?`<div class="zoom-stats">
-          ${c.hp?`<span class="hp">&#10084; ${c.hp}</span>`:''}
-          ${c.atk!==undefined?`<span class="atk">&#9876; ${c.atk}</span>`:''}
-          ${c.atkCost!==undefined?`<span class="cost">ATK: ${c.atkCost}&#9711;</span>`:''}
-          ${c.cost!==undefined&&c.type!=='boss'?`<span class="cost">COST: ${c.cost}&#9711;</span>`:''}
-        </div>`:''}
-        <div class="zoom-text">${c.text||''}</div>
-        ${(c.keywords||[]).length?`<div class="zoom-kw">Keywords: ${c.keywords.join(', ')}</div>`:''}
+  const c=CARDS[cid];const fCol=FCOL[c.faction]||'#888';
+  const typeStr=c.type==='boss'?'BOSS':c.type==='fighter'?`FIGHTER L${c.level||'?'}`:c.type==='weapon'?`WEAPON L${c.level||'?'}`:c.type.toUpperCase()+(c.speed?' \u00b7 '+c.speed.toUpperCase():'');
+  return`<div class="zoom-overlay" onclick="closeZoom()"><div class="zoom-card" onclick="event.stopPropagation()">
+    ${artImg(cid,'zoom-art')}
+    <div class="zoom-body">
+      <div class="zoom-name" style="color:${fCol}">${c.name}</div>
+      <div class="zoom-meta">${(c.faction||'').toUpperCase()} \u00b7 ${typeStr}${c.sub?' \u00b7 '+c.sub:''}</div>
+      <div class="zoom-stats">
+        ${c.hp?`<span class="z-hp">&#10084; ${c.hp}</span>`:''}
+        ${c.atk!==undefined?`<span class="z-atk">&#9876; ${c.atk}</span>`:''}
+        ${c.atkCost!==undefined?`<span class="z-cost">ATK ${c.atkCost}&#9711;</span>`:''}
+        ${c.cost!==undefined&&c.type!=='boss'?`<span class="z-cost">COST ${c.cost}&#9711;</span>`:''}
       </div>
-      <div class="zoom-footer"><button class="btn ghost sm" onclick="closeZoom()">&#10005; Close</button></div>
+      <div class="zoom-text">${c.text||''}</div>
+      ${(c.keywords||[]).length?`<div class="zoom-kw">Keywords: ${c.keywords.join(', ')}</div>`:''}
     </div>
-  </div>`;
+    <div class="zoom-footer">
+      <div class="small">Right-click any card to inspect</div>
+      <button class="btn ghost sm" onclick="closeZoom()">&#10005; Close</button>
+    </div>
+  </div></div>`;
 }
 
 function renderHelp(){
-  let html='<div class="overlay" onclick="if(event.target===this)toggleHelp()"><div class="modal"><h3>KEYWORD REFERENCE</h3><div class="kw-help">';
-  Object.entries(KW_HELP).forEach(([k,v])=>{html+=`<div class="kw-entry"><p><b>${k}</b> \u2014 ${v}</p></div>`;});
-  html+='<p style="margin-top:12px;color:var(--dim);font-size:9px">Cards marked "(Manual)" aren\'t automated \u2014 read aloud and resolve together. Right-click any card to see full details.</p>';
-  html+='</div><button class="btn ghost sm" style="margin-top:12px" onclick="toggleHelp()">Close</button></div></div>';
-  return html;
+  let h='<div class="overlay" onclick="if(event.target===this)toggleHelp()"><div class="modal"><h3>KEYWORD REFERENCE</h3>';
+  Object.entries(KW_HELP).forEach(([k,v])=>{h+=`<div class="kw-entry"><b>${k}</b><p>${v}</p></div>`;});
+  h+='<p style="margin-top:12px;font-size:9px;color:var(--dim)">Cards marked "(Manual)" resolve via group agreement. Right-click any card in-game for full details.</p>';
+  h+='<button class="btn ghost sm" style="margin-top:12px" onclick="toggleHelp()">Close</button></div></div>';
+  return h;
 }
 
 function renderHome(){
   return`<div class="center-box">
     <h1>CATACLYSM<br>ARCADE</h1>
-    <div class="sub">ONLINE TABLE</div>
-    <div class="field"><label>USERNAME</label><input id="nm" value="${S.name}" oninput="S.name=this.value" placeholder="Your name" style="width:100%"></div>
+    <div class="sub">Online Table</div>
+    <div class="field"><label>USERNAME</label><input value="${S.name}" oninput="S.name=this.value" placeholder="Your name" style="width:100%"></div>
     <button class="btn" style="width:100%;margin-bottom:12px" onclick="createRoom()">HOST NEW TABLE</button>
-    <div class="small" style="margin:10px 0;color:var(--dim)">&#8212; or join existing &#8212;</div>
+    <div class="small" style="margin:10px 0">&#8212; or join existing &#8212;</div>
     <div class="field"><label>ROOM CODE</label><input value="${S.codeInput}" oninput="S.codeInput=this.value.toUpperCase()" placeholder="ABCDE" style="width:100%;text-transform:uppercase"></div>
-    <button class="btn ghost" style="width:100%;margin-bottom:14px" onclick="joinRoom()">JOIN TABLE</button>
-    <div class="small" style="line-height:1.7">2+ players &#8226; Host shares the link &#8226; Pick factions &#8226; Build 39-card deck &#8226; Defeat all opponents' Bosses to win</div>
+    <button class="btn ghost" style="width:100%;margin-bottom:16px" onclick="joinRoom()">JOIN TABLE</button>
+    <div class="small" style="line-height:1.8">2+ players &#8226; Pick 1&#8211;2 factions &#8226; Build 39-card deck &#8226; Destroy all opponents&#39; Bosses to win&#10;&#10;Right-click any card during gameplay for full details</div>
   </div>`;
 }
 
 function renderLobby(){
   const r=S.room;const isHost=r.hostId===S.myId;
-  const inviteUrl=window.location.origin+window.location.pathname+'?room='+r.code;
-  let html=`<div class="wrap">
-    <div class="center-box" style="margin-top:20px">
-      <div class="small" style="margin-bottom:8px">SHARE THIS LINK WITH YOUR GROUP</div>
-      <div class="copyrow"><div class="codebox">${r.code}</div><button class="btn sm ghost" onclick="copyCode()">Copy Link</button></div>
-      <div class="small" style="margin-top:6px">${inviteUrl}</div>
-    </div>
-    <div class="section-h">PLAYERS AT TABLE (${r.players.length})</div>`;
-  r.players.forEach(p=>{html+=`<div class="player-row"><span>${p.name}${p.id===r.hostId?' &#128081;':''}</span><span class="small">${p.id===S.myId?'(you)':''}</span></div>`;});
-  if(isHost)html+=`<div style="margin-top:16px">${r.players.length>=2?'<button class="btn" onclick="startBuild()">START DECK BUILDING</button>':'<div class="small">Need at least 2 players to start.</div>'}</div>`;
-  else html+='<div class="small" style="margin-top:14px">Waiting for the host to start deck building&#8230;</div>';
-  return html+'</div>';
+  const url=window.location.origin+window.location.pathname+'?room='+r.code;
+  let h=`<div class="wrap"><div class="center-box" style="margin-top:20px">
+    <div class="small" style="margin-bottom:8px;letter-spacing:.2em">SEND THIS LINK TO YOUR PLAYERS</div>
+    <div class="copyrow"><div class="codebox">${r.code}</div><button class="btn sm ghost" onclick="copyCode()">Copy Link</button></div>
+    <div class="invite-url">${url}</div>
+  </div>
+  <div class="section-h">AT THE TABLE (${r.players.length})</div>`;
+  r.players.forEach(p=>{h+=`<div class="player-row"><span>${p.name}${p.id===r.hostId?' &#128081;':''}</span><span class="small">${p.id===S.myId?'(you)':''}</span></div>`;});
+  if(isHost)h+=`<div style="margin-top:14px">${r.players.length>=2?'<button class="btn" onclick="startBuild()">START DECK BUILDING</button>':'<div class="small">Need at least 2 players.</div>'}</div>`;
+  else h+='<div class="small" style="margin-top:14px">Waiting for the host to start&#8230;</div>';
+  return h+'</div>';
 }
 
 function renderBuild(){
@@ -632,119 +669,119 @@ function renderBuild(){
   const pool=poolForFactions(me.factions||[]);
   const bosses=pool.filter(c=>c.type==='boss');const nonBoss=pool.filter(c=>c.type!=='boss');
   const total=Object.values(me.list||{}).reduce((a,b)=>a+b,0);
-  const fColors={synth:FCOL.synth,mystic:FCOL.mystic,shifter:FCOL.shifter,survivor:FCOL.survivor,apex:FCOL.apex};
-  let html=`<div class="wrap"><h2 style="font-size:18px;margin-bottom:12px">DECK BUILDER</h2>
+  let h=`<div class="wrap"><h2 style="font-size:18px;margin-bottom:12px">DECK BUILDER</h2>
     <div class="section-h">1. CHOOSE UP TO 2 FACTIONS</div><div style="margin-bottom:8px">`;
-  Object.entries(FACTION_META).forEach(([f,m])=>{const on=(me.factions||[]).includes(f);html+=`<span class="faction-chip ${m.cls}${on?' on':' off'}" onclick="toggleFaction('${f}')">${m.name}</span>`;});
-  html+='</div>';
+  Object.entries(FACTION_META).forEach(([f,m])=>{const on=(me.factions||[]).includes(f);h+=`<span class="faction-chip ${m.cls}${on?' on':' off'}" onclick="toggleFaction('${f}')">${m.name}</span>`;});
+  h+='</div>';
   if((me.factions||[]).length){
-    html+=`<div class="section-h">2. CHOOSE YOUR BOSS</div>`;
-    if(!bosses.length)html+='<div class="small" style="padding:8px">No bosses available for this faction combo yet \u2014 try adding Synth or Mystic.</div>';
-    html+=`<div class="boss-pick">`;
-    bosses.forEach(b=>{html+=`<div class="boss2${me.bossId===b.id?' sel':''}" onclick="pickBoss('${b.id}')">
+    h+='<div class="section-h">2. CHOOSE YOUR BOSS</div>';
+    if(!bosses.length)h+='<div class="small" style="padding:8px">No bosses for this faction combo — try Synth or Mystic.</div>';
+    h+='<div class="boss-pick">';
+    bosses.forEach(b=>{h+=`<div class="boss2${me.bossId===b.id?' sel':''}" onclick="pickBoss('${b.id}')">
       ${artImg(b.id,'boss2-art')}
       <div class="boss2-body">
         <div class="boss2-name">${b.name}</div>
-        <div class="boss2-stats"><span class="hp">&#10084;${b.hp}</span><span class="atk">&#9876;${b.atk}</span><span class="cost">ATK: ${b.atkCost}&#9711;</span></div>
-        <div class="boss2-text">${(b.text||'').slice(0,130)}</div>
-      </div>
-    </div>`;});
-    html+='</div>';
-    html+=`<div class="section-h">3. BUILD 39 CARDS (MAX 3 COPIES EACH)</div>
-    <div class="build-summary">${total} / 39 cards<div class="progress-bar"><div class="progress-fill" style="width:${Math.min(100,total/39*100)}%"></div></div></div>`;
-    html+='<div class="deck-grid">';
-    nonBoss.forEach(c=>{const n=(me.list||{})[c.id]||0;const col=fColors[c.faction]||'#ccc';
-      const typeStr=c.type==='fighter'?`FIGHTER L${c.level||'?'}`:c.type==='weapon'?`WEAPON L${c.level||'?'}`:c.type.toUpperCase()+(c.cost!==undefined?' \u00b7 '+c.cost+'\u29BB':'');
-      html+=`<div class="dcard2">
-        <div class="dcard2-art-wrap">${artImg(c.id,'dcard2-art')}<div class="dcard2-faction-tag" style="color:${col}">${(c.faction||'').toUpperCase()}</div></div>
+        <div class="boss2-stats"><span class="b2hp">&#10084;${b.hp}</span><span class="b2atk">&#9876;${b.atk}</span><span class="b2cost">ATK:${b.atkCost}&#9711;</span></div>
+        <div class="boss2-text">${(b.text||'').slice(0,120)}</div>
+      </div></div>`;});
+    h+='</div><div class="section-h">3. BUILD 39 CARDS (MAX 3 COPIES EACH)</div>';
+    h+=`<div class="build-summary">${total}/39 cards &nbsp;&#8226;&nbsp; ${Object.values(me.list||{}).filter(v=>v>0).length} unique cards<div class="progress-bar"><div class="progress-fill" style="width:${Math.min(100,total/39*100)}%"></div></div></div>`;
+    h+='<div class="deck-grid">';
+    nonBoss.forEach(c=>{const n=(me.list||{})[c.id]||0;const fCol=FCOL[c.faction]||'#888';
+      const typeStr=c.type==='fighter'?`FIGHTER L${c.level||'?'}`:c.type==='weapon'?`WEAPON L${c.level||'?'}`:c.type.toUpperCase()+(c.cost!==undefined?' \u00b7 '+c.cost+'\u29bb':'');
+      h+=`<div class="dcard2">
+        <div class="dcard2-art-wrap">${artImg(c.id,'dcard2-art')}<div class="dcard2-ftag" style="color:${fCol}">${(c.faction||'').toUpperCase()}</div></div>
         <div class="dcard2-info">
-          <div class="dcard2-name" style="color:${col}">${c.name}</div>
+          <div class="dcard2-name" style="color:${fCol}">${c.name}</div>
           <div class="dcard2-meta">${typeStr}</div>
-          <div class="dcard2-text">${(c.text||'').slice(0,100)}</div>
+          <div class="dcard2-text">${(c.text||'').slice(0,95)}</div>
           <div class="qty-ctl"><button onclick="adjustCard('${c.id}',-1)">&#8722;</button><span class="n${n>0?' has':''}">${n}</span><button onclick="adjustCard('${c.id}',1)">+</button></div>
         </div>
-        <button class="dcard2-info-btn" onclick="showZoom('${c.id}')">&#9432;</button>
+        <button class="dcard2-ibtn" onclick="showZoom('${c.id}')">&#9432;</button>
       </div>`;
     });
-    html+='</div>';
-    html+=`<div style="margin-top:16px">${me.ready?'<button class="btn ghost" onclick="unready()">Edit Deck</button> <span class="small">&#10003; Ready \u2014 waiting on others</span>':'<button class="btn" onclick="markReady()">MARK READY</button>'}</div>`;
+    h+='</div>';
+    h+=`<div style="margin-top:14px">${me.ready?'<button class="btn ghost" onclick="unready()">Edit Deck</button> <span class="small">&#10003; Ready</span>':'<button class="btn" onclick="markReady()">MARK READY</button>'}</div>`;
   }
-  if(r.hostId===S.myId){const allReady=r.players.length>=2&&r.players.every(p=>p.ready);
-    html+=`<div style="margin-top:20px;border-top:1px solid rgba(255,109,35,.2);padding-top:14px">${allReady?'<button class="btn" onclick="beginGame()">START GAME</button>':'<div class="small">All players must mark Ready before the game can start.</div>'}</div>`;}
-  return html+'</div>';
+  if(r.hostId===S.myId){const ar=r.players.length>=2&&r.players.every(p=>p.ready);
+    h+=`<div style="margin-top:18px;border-top:1px solid var(--border);padding-top:14px">${ar?'<button class="btn" onclick="beginGame()">START GAME</button>':'<div class="small">All players must mark Ready.</div>'}</div>`;}
+  return h+'</div>';
 }
 
 function renderPlay(){
   const r=S.room;const gp=r.game;
   if(gp.winner)return renderWinner(gp);
-  const meIdx=gp.order.indexOf(S.myId);const myTurn=gp.curIdx===meIdx;
+  const myTurn=gp.curIdx===gp.order.indexOf(S.myId);
   const pend=pendingForMe(gp);
   const myP=gp.p[S.myId];
-  const curName=gp.p[gp.order[gp.curIdx]]?gp.p[gp.order[gp.curIdx]].name:'?';
-  let html=`<div class="wrap">
-    <div class="hud">
-      <div class="hud-chunk"><div class="hud-lbl">LEVEL</div><div class="hud-val">${gp.level}</div></div>
-      <div class="hud-sep"></div>
-      <div class="hud-chunk"><div class="hud-lbl">YOUR COINS</div><div class="hud-val">${myP.coins}&#9711;</div></div>
-      <div class="hud-sep"></div>
-      <div class="hud-chunk"><div class="hud-lbl">TURN</div><div class="hud-val" style="color:${myTurn?'var(--ap)':'var(--cr)'}">${curName}${myTurn?' (YOU)':''}</div></div>
-      <div class="hud-sep"></div>
-      <div class="hud-chunk"><div class="hud-lbl">HAND/DECK</div><div class="hud-val" style="font-size:12px">&#9997;${myP.hand.length} &#127831;${myP.deck.length}</div></div>
-      <div class="hud-actions">
-        ${!myP.mullUsed?'<button class="btn ghost sm" onclick="doMulligan()">Mulligan</button>':''}
-        ${myTurn&&!pend?'<button class="btn sm" onclick="passTurn()">PASS TURN</button>':''}
-        <button class="btn ghost sm" onclick="toggleHelp()">Keywords</button>
-      </div>
-    </div>`;
+  const opps=Object.keys(gp.p).filter(pid=>pid!==S.myId);
 
-  if(pend){
-    html+=`<div class="pending-banner">&#9650; ${pend.prompt}</div>`;
-    if(pend.kind==='pick'||pend.kind==='discard')
-      html+=`<div class="pending-opts">${(pend.options||[]).map(o=>`<button class="btn sm ghost" onclick="resolvePending('${(o.value||'').replace(/'/g,"&#39;")}')">${o.label}</button>`).join('')}</div>`;
-  }
-  if(S.attackPick&&gp.inst[S.attackPick]){
-    html+=`<div class="attack-banner">&#9876; Attacking with <b>${CARDS[gp.inst[S.attackPick].cid].name}</b> \u2014 click a target to attack <button class="btn sm ghost" onclick="cancelAttackPick()">Cancel</button></div>`;
-  }
+  let h=`<div id="game-table">`;
 
-  /* Opponents */
-  Object.keys(gp.p).filter(pid=>pid!==S.myId).forEach(pid=>{
-    const p=gp.p[pid];
-    html+=`<div class="opp-zone">
-      <div class="opp-header">
-        <div class="opp-name">${p.name}${p.defeated?' &#128128;':''}</div>
-        <div class="opp-meta">&#9997; ${p.hand.length} &nbsp;&#127831; ${p.deck.length} &nbsp;&#128682; ${p.grave.length}</div>
-      </div>
-      <div class="opp-cards">`;
-    if(p.boss){html+=bCard(gp,p.boss,{myTurn,pend,isOpp:true});}
-    p.board.forEach(u=>{html+=bCard(gp,u,{myTurn,pend,isOpp:true});});
-    if(!p.board.length&&!p.boss){html+='<div class="empty-board">DEFEATED</div>';}
-    html+='</div></div>';
+  /* Opponent strips + fields */
+  opps.forEach(pid=>{
+    h+=playerStrip(gp,pid,true);
+    h+=`<div class="opp-field">`;
+    if(gp.p[pid].boss)h+=bCard(gp,gp.p[pid].boss,{myTurn,pend,isOpp:true});
+    if(gp.p[pid].board.length)h+=`<div class="boss-sep"></div>`;
+    gp.p[pid].board.forEach(u=>{h+=bCard(gp,u,{myTurn,pend,isOpp:true});});
+    if(!gp.p[pid].board.length&&!gp.p[pid].boss)h+='<div class="empty-field">DEFEATED</div>';
+    h+=`<div class="field-label">OPPONENT FIELD</div></div>`;
   });
 
-  /* My Board */
-  html+=`<div class="my-zone">
-    <div class="section-h">YOUR BOARD</div>
-    <div class="board-row">`;
-  if(myP.boss)html+=bCard(gp,myP.boss,{myTurn,pend,isOpp:false});
-  myP.board.forEach(u=>{html+=bCard(gp,u,{myTurn,pend,isOpp:false});});
-  if(!myP.board.length&&!myP.boss){html+='<div class="empty-board">No cards in play</div>';}
-  html+=`</div>
-    <div class="section-h">YOUR HAND (${myP.hand.length})</div>
-    <div class="hand-row">`;
-  if(!myP.hand.length)html+='<div class="empty-board" style="width:100%">Hand is empty</div>';
-  myP.hand.forEach(u=>{html+=hCard(gp,u,myTurn,pend);});
-  html+='</div></div>';
+  /* My field */
+  h+=`<div class="my-field">`;
+  if(myP.boss)h+=bCard(gp,myP.boss,{myTurn,pend,isOpp:false});
+  if(myP.board.length)h+=`<div class="boss-sep"></div>`;
+  myP.board.forEach(u=>{h+=bCard(gp,u,{myTurn,pend,isOpp:false});});
+  if(!myP.board.length&&!myP.boss)h+='<div class="empty-field">NO CARDS IN PLAY</div>';
+  h+=`<div class="field-label">YOUR FIELD</div></div>`;
 
-  html+=`<div class="section-h">GAME LOG</div><div class="log-wrap"><div class="log">`;
-  (gp.log||[]).slice().reverse().forEach(l=>{html+=`<div class="log-entry">${l}</div>`;});
-  html+='</div></div></div>';
-  return html;
+  /* My player strip */
+  h+=playerStrip(gp,S.myId,false);
+
+  /* Pending / attack action bar */
+  if(pend){
+    h+=`<div class="action-bar">&#9650; ${pend.prompt}`;
+    if(pend.kind==='pick'||pend.kind==='discard')
+      h+=`<div class="action-opts">${(pend.options||[]).map(o=>`<button class="action-opt" onclick="resolvePending('${(o.value||'').replace(/'/g,"&#39;")}')">${o.label}</button>`).join('')}</div>`;
+    h+=`</div>`;
+  }
+  if(S.attackPick&&gp.inst[S.attackPick]){
+    h+=`<div class="action-bar atk">&#9876; Attacking with <b>${CARDS[gp.inst[S.attackPick].cid].name}</b> — click a target above &nbsp; <button class="btn ghost sm" onclick="cancelAttackPick()">Cancel</button></div>`;
+  }
+
+  /* Hand strip */
+  h+=`<div class="hand-strip">`;
+  if(!myP.hand.length)h+='<div class="small" style="margin:auto;color:var(--dim)">Hand is empty</div>';
+  myP.hand.forEach(u=>{h+=hCard(gp,u,myTurn,pend);});
+  h+=`</div>`;
+
+  /* HUD overlay */
+  h+=`<div class="game-hud">
+    <div class="hud-pill">
+      <div><div class="hud-lbl">LEVEL</div><div class="hud-level">${gp.level}</div></div>
+    </div>
+    <div class="hud-pill" style="flex-direction:column;gap:4px;align-items:flex-end">
+      ${myTurn&&!pend?`<button class="btn sm" onclick="passTurn()">PASS TURN</button>`:''}
+      ${!myP.mullUsed?`<button class="btn ghost sm" onclick="doMulligan()">Mulligan</button>`:''}
+      <button class="btn ghost sm" onclick="toggleHelp()">Keywords</button>
+    </div>
+  </div>`;
+
+  /* Log */
+  h+=`<div class="log-panel"><div class="log-head">GAME LOG</div><div class="log-body">`;
+  (gp.log||[]).slice(-20).reverse().forEach(l=>{h+=`<div>${l}</div>`;});
+  h+=`</div></div>`;
+
+  h+='</div>';
+  return h;
 }
 
 function renderWinner(gp){
-  return`<div class="wrap"><div class="winner-banner">
+  return`<div id="game-table"><div class="winner-screen">
     <h1>${gp.winner==='draw'?'DRAW!':(gp.p[gp.winner]?gp.p[gp.winner].name:'???')+' WINS!'}</h1>
-    <div class="sub-msg">${gp.winner==='draw'?'ALL BOSSES FELL SIMULTANEOUSLY':'ALL OPPONENTS\' BOSSES HAVE BEEN DEFEATED'}</div>
+    <div class="winner-sub">${gp.winner==='draw'?'ALL BOSSES FELL SIMULTANEOUSLY':'ALL OPPONENTS BOSSES DEFEATED'}</div>
     <button class="btn" onclick="returnToLobby()">Return to Lobby</button>
   </div></div>`;
 }
@@ -752,32 +789,30 @@ function renderWinner(gp){
 function render(){
   const app=document.getElementById('app');
   if(!_db){
-    app.innerHTML='<div class="center-box" style="margin-top:60px"><h1 style="font-size:20px;color:var(--red)">SETUP REQUIRED</h1><div class="small" style="line-height:2;margin-top:14px">Open <b>public/game.js</b> and set your Supabase credentials.<br>Then run <b>setup.sql</b> in the SQL Editor.</div></div>';
+    app.innerHTML='<div class="center-box" style="margin-top:60px"><h1 style="font-size:20px;color:var(--red)">SETUP REQUIRED</h1><div class="small" style="line-height:2;margin-top:14px">Edit <b>game.js</b> and set your Supabase credentials.<br>Run <b>setup.sql</b> in the Supabase SQL Editor.</div></div>';
     return;
   }
-  if(S.screen==='home'){app.innerHTML=renderHome();if(S.zoomCid)app.innerHTML+=renderZoom();return;}
-  let html=`<div id="topbar"><div class="code">TABLE ${S.code||''}</div><div class="topbar-right"><button class="btn ghost sm" onclick="toggleHelp()">Keywords</button><button class="btn ghost sm" onclick="leaveTable()">Leave</button></div></div>`;
+  if(S.screen==='home'){app.innerHTML=renderHome()+(S.zoomCid?renderZoom():'');return;}
+  let h=`<div id="topbar"><div class="code">TABLE ${S.code||''}</div><div style="display:flex;gap:8px"><button class="btn ghost sm" onclick="toggleHelp()">Keywords</button><button class="btn ghost sm" onclick="leaveTable()">Leave</button></div></div>`;
   if(S.room){
-    if(S.room.phase==='lobby')html+=renderLobby();
-    else if(S.room.phase==='build')html+=renderBuild();
-    else if(S.room.phase==='play')html+=renderPlay();
+    if(S.room.phase==='lobby')h+=renderLobby();
+    else if(S.room.phase==='build')h+=renderBuild();
+    else if(S.room.phase==='play')h+=renderPlay();
   }
-  if(S.helpOpen)html+=renderHelp();
-  if(S.zoomCid)html+=renderZoom();
-  app.innerHTML=html;
+  if(S.helpOpen)h+=renderHelp();
+  if(S.zoomCid)h+=renderZoom();
+  app.innerHTML=h;
 }
 
 /* BOOTSTRAP */
-(function(){
+(()=>{
   const urlRoom=new URLSearchParams(window.location.search).get('room');
   if(urlRoom)S.codeInput=urlRoom.toUpperCase();
-  /* Preload card images */
+  /* Load any saved image mapping from image-mapper tool */
+  try{const saved=localStorage.getItem('ca_img_mapping');if(saved){const m=JSON.parse(saved);Object.keys(m).forEach(fn=>{if(m[fn])CIMG[m[fn]]=fn+'.webp';});console.log('Loaded',Object.keys(m).filter(k=>m[k]).length,'image mappings from localStorage');}}catch(e){}
+  /* Preload images */
   Object.values(CIMG).forEach(fn=>{const im=new Image();im.src=IMG_BASE+fn;});
-  /* Slow fallback poll */
-  setInterval(async()=>{
-    if(!S.code||S.busy||!_db)return;
-    const fresh=await loadRoom(S.code);
-    if(fresh&&(!S.room||fresh.v>S.room.v)){S.room=fresh;render();}
-  },8000);
+  /* Fallback poll */
+  setInterval(async()=>{if(!S.code||S.busy||!_db)return;const f=await loadRoom(S.code);if(f&&(!S.room||f.v>S.room.v)){S.room=f;render();}},8000);
   render();
 })();
