@@ -1,5 +1,5 @@
 /* ============================================================
-   CATACLYSM ARCADE — REALTIME DATABASE ENGINE
+   CATACLYSM ARCADE — FULL ENGINE
 ============================================================ */
 
 const SUPABASE_URL = 'YOUR_SUPABASE_URL';
@@ -655,13 +655,69 @@ window.confirmAttack=async function(defUid){
     if(!gp.pending) nextTurn(gp);
   });
 };
-window.useAbility=async function(u,idx){
-  await act(r=>{ const gp=r.game; const pid=S.myId; if(gp.curIdx!==gp.order.indexOf(pid)) return alert('Not your turn.');
-    const i=gp.inst[u]; const c=CARDS[i.cid]; let ab=(c.activated||[])[idx];
-    let weaponAb=null;
-    if(!ab){ (i.wielded||[]).forEach(wu=>{ const wc=CARDS[gp.inst[wu].cid]; (wc.weaponActivated||wc.grantsActivated||[]).forEach((a,ai)=>{ if(('w'+wu+ai)===idx) weaponAb=a; }); }); }
-    const useAb=ab||weaponAb; if(!useAb) return;
-    if(useAb.cost.tap && !canAct(gp,u)) return alert('Exceeded action parameters.');
-    if(useAb.cost.coins && !spendCoins(gp,pid,useAb.cost.coins)) return alert('Insufficient Resource Coins.');
-    if(useAb.cost.tap) i.actedCount=(i.actedCount||0)+1;
-    if(useAb.cost.sacrifice) destroyInstance(gp,u,{skipFortify:
+
+window.useAbility=async function(u, idx) {
+  await act(r => {
+    const gp = r.game;
+    const pid = S.myId;
+    if (gp.curIdx !== gp.order.indexOf(pid)) return alert('Awaiting opponent action lane.');
+    
+    const i = gp.inst[u];
+    const c = CARDS[i.cid];
+    let ab = (c.activated || [])[idx];
+    let weaponAb = null;
+    
+    // Find weapon ability
+    if (!ab) {
+      (i.wielded || []).forEach(wu => {
+        const wc = CARDS[gp.inst[wu].cid];
+        (wc.weaponActivated || wc.grantsActivated || []).forEach((a, ai) => {
+          if (('w' + wu + ai) === idx) weaponAb = a;
+        });
+      });
+    }
+    
+    const useAb = ab || weaponAb;
+    if (!useAb) return;
+    
+    if (useAb.cost.tap && !canAct(gp, u)) return alert('Exceeded action parameters.');
+    if (useAb.cost.coins && !spendCoins(gp, pid, useAb.cost.coins)) return alert('Insufficient Resource Coins.');
+    if (useAb.cost.tap) i.actedCount = (i.actedCount || 0) + 1;
+    
+    // Handle specific costs
+    if (useAb.cost.sacrifice) destroyInstance(gp, u, { skipFortify: true });
+    if (useAb.cost.selfDamage) {
+        i.hp -= useAb.cost.selfDamage;
+        log(gp, CARDS[i.cid].name + ' takes ' + useAb.cost.selfDamage + ' dmg.');
+        if (i.hp <= 0) destroyInstance(gp, u);
+    }
+    
+    useAb.run(gp, { pid, src: u });
+    if (!gp.pending) nextTurn(gp);
+    render(); 
+  });
+};
+
+/* --- RENDERER --- */
+window.render = function() {
+  const app = document.getElementById('app');
+  if (!S.room) {
+    app.innerHTML = `
+      <div class="wrap"><div class="center-box">
+        <h1>CATACLYSM</h1>
+        <div class="field"><label>Username</label><input onchange="S.name=this.value" placeholder="Pilot Name"></div>
+        <div class="field"><label>Room</label><input onchange="S.codeInput=this.value" placeholder="Enter Code"></div>
+        <button class="btn" onclick="createRoom()">New</button>
+        <button class="btn ghost" onclick="joinRoom()">Join</button>
+      </div></div>`;
+  } else {
+    app.innerHTML = `
+      <div id="topbar"><div class="code">Room: ${S.code}</div></div>
+      <div class="wrap">
+        <h2>Game Status: ${S.room.phase}</h2>
+        <div id="board"></div>
+      </div>`;
+  }
+};
+
+render();
