@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cataclysm Arcade — Image Mapper</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#080604;color:#F0EAD6;font-family:monospace;padding:16px}
+h1{font-family:serif;color:#FF6D23;margin-bottom:4px}
+.sub{font-size:11px;color:#6A6058;margin-bottom:16px}
+.controls{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:center}
+.controls input{background:#0d0a07;border:1px solid rgba(255,109,35,.4);color:#F0EAD6;padding:7px 10px;font-size:12px;width:220px}
+.btn{background:#FF6D23;color:#000;border:none;padding:8px 16px;cursor:pointer;font-family:monospace;font-size:12px}
+.btn.ghost{background:transparent;border:1px solid #FF6D23;color:#FF6D23}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px}
+.card-slot{background:#0d0a07;border:2px solid rgba(255,109,35,.15);border-radius:4px;overflow:hidden;transition:border-color .15s}
+.card-slot.mapped{border-color:#76C442}
+.card-slot.mapped .slot-label{background:rgba(118,196,66,.15)}
+.card-img{width:100%;height:140px;object-fit:cover;display:block;cursor:pointer}
+.slot-label{padding:6px 8px;font-size:10px}
+.slot-filename{color:rgba(255,109,35,.6);font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.slot-cardname{margin-top:4px}
+.slot-cardname select{width:100%;background:#080604;border:1px solid rgba(255,109,35,.3);color:#F0EAD6;padding:4px;font-size:10px}
+.slot-cardname select.has-value{color:#76C442}
+.output-box{background:#0d0a07;border:1px solid rgba(255,109,35,.3);padding:12px;margin-top:16px;font-size:10px;white-space:pre-wrap;max-height:300px;overflow-y:auto;color:#76C442}
+.stats{font-size:11px;color:#F0B429;margin-bottom:8px}
+.zoom-overlay{position:fixed;inset:0;background:rgba(0,0,0,.9);display:flex;align-items:center;justify-content:center;z-index:100;cursor:pointer}
+.zoom-overlay img{max-width:90vw;max-height:90vh;object-fit:contain}
+.filter-row{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+.filter-btn{padding:4px 10px;border:1px solid rgba(255,109,35,.3);background:transparent;color:#6A6058;font-size:10px;cursor:pointer}
+.filter-btn.active{color:#FF6D23;border-color:#FF6D23}
+</style>
+</head>
+<body>
+<h1>Cataclysm Arcade — Image Mapper</h1>
+<div class="sub">Assign each image to the correct card. Click an image to zoom. Changes are auto-saved to localStorage. Export the mapping when done and paste it into game.js.</div>
+
+<div class="controls">
+  <button class="btn" onclick="exportMapping()">Export Mapping → game.js</button>
+  <button class="btn ghost" onclick="clearAll()">Clear All</button>
+  <button class="btn ghost" onclick="showUnmapped()">Show Unmapped Only</button>
+  <button class="btn ghost" onclick="showAll()">Show All</button>
+  <span class="stats" id="stats"></span>
+</div>
+<div class="filter-row" id="filterRow"></div>
+
+<div class="grid" id="grid"></div>
+<div class="output-box" id="output" style="display:none"></div>
+
+<div class="zoom-overlay" id="zoomOl" style="display:none" onclick="closeZoom()">
+  <img id="zoomImg" src="" alt="">
+</div>
+
+<script>
+const IMG_BASE = 'https://raw.githubusercontent.com/ctest9104-tech/cataclysm-assets/main/images/';
+
+const CARD_IDS = [
+  'decommissioner','toolshed','trapper',
+  'effwithmeammo','mothermayeye','tantrum',
+  'shapechanger','ironforager','apexpredator',
+  'dreyver','prox','quarters','father','motreina',
+  'fishhooks','bluegelati','notamotua','bleargh',
+  'dataspike','swiftpack','blastscanner','jackedhammer',
+  'givethesignal','bestoffense','powerplay','boom',
+  'autopilot','signaljam',
+  'flecks','shaman','ebb','gates','clief',
+  'shadowstriker','reika',
+  'darby','minka','slider',
+  'intersentinel','freevector','vector','mechtorsuit',
+  'swordfromnowhere',
+  'theurgicthrashing','rollcall','malefice','voltagesnap',
+  'sludged','rats','fullheal','echofade','evanesce',
+  'marrowpiercer','murkgodpendant',
+  'trackersfrenzy','undertowed','steelswipe','toothextraction',
+  'catchcard','pushcard','derail','emergencybrake',
+  'flippingout','nightvision','ahacard','outlast',
+  'beartrap','toolbox','headrat','whump'
+].sort();
+
+const ALL_FILES = [
+  'DS1-023.webp','DS1-030.webp','DS1-038.webp','DS1-071.webp',
+  'render-mq82m6em.webp','render-mq82m6zt.webp','render-mq82mt2o.webp','render-mq82mtls.webp',
+  'render-mq82n30v.webp','render-mq82n695.webp','render-mq82noow.webp','render-mq82ns08.webp',
+  'render-mq82ocja.webp','render-mq82od0q.webp','render-mq82oy4v.webp','render-mq82ozdt.webp',
+  'render-mq82pliu.webp','render-mq82pls1.webp','render-mq82qaar.webp','render-mq82qb03.webp',
+  'render-mq82qx7k.webp','render-mq82qy7i.webp','render-mq82rj1b.webp','render-mq82rkj2.webp',
+  'render-mq82rspr.webp','render-mq82ry0b.webp','render-mq82se55.webp','render-mq82smh7.webp',
+  'render-mq82ssqb.webp','render-mq82szo4.webp','render-mq82tevl.webp','render-mq82tt5b.webp',
+  'render-mq82u1ed.webp','render-mq82ueab.webp','render-mq82up5x.webp','render-mq82uuz1.webp',
+  'render-mq82v2l0.webp','render-mq82vipj.webp','render-mq82vp7e.webp','render-mq82w5xo.webp',
+  'render-mq82wdi3.webp','render-mq82wrmk.webp','render-mq82x31a.webp','render-mq82xhjm.webp',
+  'render-mq82xttd.webp','render-mq82xys2.webp','render-mq82yd7b.webp','render-mq82yhl3.webp',
+  'render-mq82yuv1.webp','render-mq82yz0l.webp','render-mq82zd5k.webp','render-mq82zkhm.webp',
+  'render-mq83035u.webp','render-mq830569.webp','render-mq830mwk.webp','render-mq830owo.webp',
+  'render-mq83191n.webp','render-mq831dlh.webp','render-mq831kn8.webp','render-mq831q38.webp',
+  'render-mq8327ej.webp','render-mq832cs4.webp','render-mq832sdi.webp','render-mq832yx4.webp',
+  'render-mq833gl9.webp','render-mq833kln.webp','render-mq833z75.webp',
+  'render-mq8347x5.webp','render-mq834dho.webp','render-mq834zdf.webp',
+  'render-mq835b15.webp','render-mq835m7t.webp','render-mq835xsc.webp',
+  'render-mq8368ip.webp','render-mq836emw.webp','render-mq836hy5.webp','render-mq836yg3.webp',
+  'render-mq8374uc.webp','render-mq837klg.webp','render-mq837rlv.webp',
+  'render-mq83879t.webp','render-mq838ccz.webp','render-mq838tf0.webp','render-mq838y1r.webp',
+  'render-mq839hev.webp','render-mq839jkk.webp','render-mq83a3v4.webp','render-mq83a6bz.webp',
+  'render-mq83apbe.webp','render-mq83arej.webp','render-mq83be2z.webp','render-mq83bebv.webp',
+  'render-mq83c0e5.webp','render-mq83c0mv.webp','render-mq83cnop.webp','render-mq83cnrg.webp',
+  'render-mq83cxwt.webp','render-mq83cyq3.webp','render-mq83djn0.webp','render-mq83dkku.webp',
+  'render-mq83e5uz.webp','render-mq83e6ta.webp','render-mq83esbe.webp','render-mq83esvh.webp',
+  'render-mq83fg5f.webp','render-mq83fg9i.webp','render-mq83g4dy.webp','render-mq83g4uy.webp',
+  'render-mq83grxa.webp','render-mq83gsx7.webp','render-mq83hedv.webp','render-mq83hfj9.webp',
+  'render-mq83i0g1.webp','render-mq83i27x.webp','render-mq83io9y.webp','render-mq83iod9.webp',
+  'render-mq83jdnu.webp','render-mq83jdqz.webp','render-mq83jnmx.webp','render-mq83jnpz.webp',
+  'render-mq83kaj3.webp','render-mq83kb5b.webp','render-mq83kyb0.webp','render-mq83kyg7.webp',
+  'render-mq83llb0.webp','render-mq83lly5.webp','render-mq83m92b.webp','render-mq83m97v.webp',
+  'render-mq83mwwt.webp','render-mq83mxj8.webp','render-mq83niqy.webp','render-mq83njzn.webp',
+  'render-mq83o5fa.webp','render-mq83o77a.webp','render-mq83oqvm.webp','render-mq83osng.webp',
+  'render-mq83pdq7.webp','render-mq83ph11.webp','render-mq83q0bf.webp','render-mq83q46m.webp',
+  'render-mq83qlgo.webp','render-mq83qps3.webp','render-mq83r7oj.webp','render-mq83rb8z.webp',
+  'render-mq83rstx.webp','render-mq83rwrb.webp','render-mq83senr.webp','render-mq83siwj.webp',
+  'render-mq83t4ah.webp','render-mq83t4ak.webp','render-mq83tec6.webp','render-mq83tf41.webp',
+  'render-mq83u22z.webp','render-mq83u290.webp','render-mq83unlz.webp','render-mq83upm0.webp',
+  'render-mq83v8ob.webp','render-mq83vajo.webp','render-mq83vunp.webp','render-mq83vx5p.webp',
+  'render-mq83wcyl.webp','render-mq83wg7d.webp','render-mq87mx41.webp'
+];
+
+let mapping = JSON.parse(localStorage.getItem('ca_img_mapping') || '{}');
+let showMode = 'all';
+
+function save() { localStorage.setItem('ca_img_mapping', JSON.stringify(mapping)); updateStats(); }
+
+function updateStats() {
+  const mapped = Object.values(mapping).filter(v => v).length;
+  const cardsCovered = new Set(Object.values(mapping).filter(v=>v)).size;
+  document.getElementById('stats').textContent = `${mapped}/${ALL_FILES.length} images assigned · ${cardsCovered}/${CARD_IDS.length} cards covered`;
+}
+
+function renderGrid(files) {
+  const grid = document.getElementById('grid');
+  grid.innerHTML = '';
+  files.forEach(fn => {
+    const key = fn.replace('.webp','');
+    const val = mapping[key] || '';
+    const div = document.createElement('div');
+    div.className = 'card-slot' + (val ? ' mapped' : '');
+    div.id = 'slot_' + key;
+    const shortName = fn.length > 22 ? fn.slice(0,10)+'...'+fn.slice(-8) : fn;
+    div.innerHTML = `
+      <img class="card-img" src="${IMG_BASE}${fn}" loading="lazy" onclick="zoomImg('${IMG_BASE}${fn}')" alt="${fn}">
+      <div class="slot-label">
+        <div class="slot-filename" title="${fn}">${shortName}</div>
+        <div class="slot-cardname">
+          <select id="sel_${key}" onchange="setMapping('${key}',this.value)" class="${val?'has-value':''}">
+            <option value="">— unassigned —</option>
+            ${CARD_IDS.map(id => `<option value="${id}" ${val===id?'selected':''}>${id}</option>`).join('')}
+          </select>
+        </div>
+      </div>`;
+    grid.appendChild(div);
+  });
+  updateStats();
+}
+
+function setMapping(key, cardId) {
+  // Remove any other key that already has this card
+  Object.keys(mapping).forEach(k => { if(mapping[k]===cardId && k!==key) delete mapping[k]; });
+  mapping[key] = cardId;
+  save();
+  const slot = document.getElementById('slot_'+key);
+  if(slot) slot.className = 'card-slot' + (cardId ? ' mapped' : '');
+  const sel = document.getElementById('sel_'+key);
+  if(sel) sel.className = cardId ? 'has-value' : '';
+}
+
+function showAll() { showMode='all'; renderGrid(ALL_FILES); }
+function showUnmapped() {
+  showMode='unmapped';
+  const unmapped = ALL_FILES.filter(fn => !mapping[fn.replace('.webp','')]);
+  renderGrid(unmapped);
+}
+
+function exportMapping() {
+  const entries = Object.entries(mapping).filter(([k,v])=>v).sort(([,a],[,b])=>a.localeCompare(b));
+  let out = 'const CIMG = {\n';
+  entries.forEach(([fn, cardId]) => {
+    out += `  ${cardId}: '${fn}.webp',\n`;
+  });
+  out += '};\n\n// Paste this into game.js replacing the existing CIMG object.';
+  document.getElementById('output').style.display = 'block';
+  document.getElementById('output').textContent = out;
+  navigator.clipboard.writeText(out).catch(()=>{});
+  alert('Mapping exported! Check the box below and paste into game.js.');
+}
+
+function clearAll() {
+  if(confirm('Clear all mappings?')) { mapping = {}; save(); renderGrid(ALL_FILES); }
+}
+
+function zoomImg(src) {
+  document.getElementById('zoomImg').src = src;
+  document.getElementById('zoomOl').style.display = 'flex';
+}
+function closeZoom() { document.getElementById('zoomOl').style.display = 'none'; }
+
+renderGrid(ALL_FILES);
+</script>
+</body>
+</html>
