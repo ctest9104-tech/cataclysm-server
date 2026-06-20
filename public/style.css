@@ -138,35 +138,89 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
 
 /* ── PLAYER STRIPS ── */
 .player-strip {
-  display: flex; align-items: center; gap: 14px; padding: 8px 18px;
+  display: flex; align-items: center; gap: 12px; padding: 8px 14px;
   background: linear-gradient(90deg, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.55) 100%);
   border-top: 1px solid var(--border-soft);
-  z-index: 5; flex-wrap: wrap;
+  z-index: 5; flex-wrap: wrap; min-height: 64px;
 }
 .player-strip.opp {
   border-top: none; border-bottom: 1px solid var(--border-soft);
   background: linear-gradient(90deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.92) 100%);
-  flex-direction: row-reverse;
 }
-.player-strip > div:first-child { display: flex; flex-direction: column; min-width: 100px; }
+.player-strip.active::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+  background: var(--ap); box-shadow: 0 0 12px rgba(240,180,41,0.6);
+}
+.player-strip { position: relative; }
+.ps-id { display: flex; flex-direction: column; min-width: 110px; flex-shrink: 0; }
+.ps-bossname { font-size: 9px; color: var(--dim); letter-spacing: 0.05em; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px; }
 .player-name {
-  font-family: 'Bebas Neue', cursive; font-size: 17px; letter-spacing: 0.08em;
+  font-family: 'Bebas Neue', cursive; font-size: 16px; letter-spacing: 0.08em;
   color: var(--cr); line-height: 1.1;
 }
 .player-name.is-turn { color: var(--ap); text-shadow: 0 0 10px rgba(240,180,41,0.55); }
 
 /* HP bars */
-.hp-bar-wrap { display: flex; align-items: center; gap: 10px; flex: 1; max-width: 280px; min-width: 160px; }
+.hp-bar-wrap { display: flex; align-items: center; gap: 10px; flex: 1; max-width: 260px; min-width: 140px; }
 .hp-label { font-size: 10px; color: var(--dim); font-weight: bold; letter-spacing: 0.1em; }
 .hp-bar { flex: 1; height: 10px; background: rgba(0,0,0,0.85); border-radius: 5px; overflow: hidden; box-shadow: inset 0 2px 4px rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.08); }
 .hp-fill { height: 100%; border-radius: 4px; transition: width 0.5s cubic-bezier(0.4,0,0.2,1); background: linear-gradient(90deg, #4caf50, #8bc34a); box-shadow: 0 0 8px rgba(118,196,66,0.4); }
 .hp-fill.low { background: linear-gradient(90deg, #d32f2f, #f44336); box-shadow: 0 0 12px rgba(244,67,54,0.55); }
 .hp-fill.full { background: linear-gradient(90deg, #5a9c20, var(--su)); }
-.hp-num { font-size: 14px; font-family: 'Bebas Neue', cursive; color: var(--su); min-width: 50px; text-align: right; }
+.hp-num { font-size: 13px; font-family: 'Bebas Neue', cursive; color: var(--su); min-width: 48px; text-align: right; }
 
-/* Status badges */
-.coin-badge { background: rgba(240,180,41,0.15); border: 1px solid var(--ap); color: var(--ap); padding: 5px 12px; font-family: 'Bebas Neue', cursive; font-size: 16px; border-radius: 4px; box-shadow: 0 0 10px rgba(240,180,41,0.2); }
-.deck-count, .hand-count, .grv-count { font-size: 11px; color: var(--dim); background: rgba(0,0,0,0.5); padding: 4px 8px; border-radius: 4px; white-space: nowrap; }
+/* Deck / Discard / Hand piles - card-back graphic with count */
+.ps-piles { display: flex; gap: 6px; flex-shrink: 0; }
+.pile {
+  position: relative; width: 36px; height: 50px;
+  background: linear-gradient(135deg, #2a1a08 0%, #1a0d04 50%, #2a1a08 100%);
+  border: 2px solid rgba(255,109,35,0.35); border-radius: 4px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.06);
+  cursor: default;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.pile:hover { transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0,0,0,0.7); }
+.pile::before {
+  content: ''; position: absolute; inset: 3px; border-radius: 2px;
+  background: radial-gradient(circle at center, rgba(255,109,35,0.18) 0%, transparent 70%);
+}
+.pile-n {
+  font-family: 'Black Ops One', cursive; font-size: 14px; color: var(--cr);
+  text-shadow: 0 1px 2px #000; position: relative; z-index: 1;
+}
+.pile-l {
+  font-family: 'Bebas Neue', cursive; font-size: 7px; color: var(--dim);
+  letter-spacing: 0.15em; position: relative; z-index: 1; margin-top: -1px;
+}
+.deck-pile { border-color: rgba(255,109,35,0.4); }
+.grave-pile { border-color: rgba(110,110,110,0.4); background: linear-gradient(135deg, #1a1a1a 0%, #0a0a0a 50%, #1a1a1a 100%); }
+.grave-pile::before { background: radial-gradient(circle at center, rgba(110,110,110,0.15) 0%, transparent 70%); }
+.hand-pile { border-color: rgba(0,255,204,0.35); background: linear-gradient(135deg, #052a25 0%, #021816 50%, #052a25 100%); }
+.hand-pile::before { background: radial-gradient(circle at center, rgba(0,255,204,0.15) 0%, transparent 70%); }
+
+.ps-coins { flex-shrink: 0; }
+.coin-badge { background: rgba(240,180,41,0.15); border: 1px solid var(--ap); color: var(--ap); padding: 5px 12px; font-family: 'Bebas Neue', cursive; font-size: 15px; border-radius: 4px; box-shadow: 0 0 10px rgba(240,180,41,0.2); white-space: nowrap; }
+.coin-badge.opp { opacity: 0.75; }
+
+/* Player controls (level pill + end turn button) */
+.ps-controls { display: flex; gap: 8px; align-items: center; flex-shrink: 0; margin-left: auto; }
+.level-pill {
+  background: rgba(0,0,0,0.7); border: 1px solid var(--ap); border-radius: 4px;
+  padding: 4px 10px; display: flex; flex-direction: column; align-items: center; gap: 0;
+  box-shadow: 0 0 8px rgba(240,180,41,0.18);
+}
+.level-pill-l { font-family: 'Bebas Neue', cursive; font-size: 8px; color: var(--dim); letter-spacing: 0.18em; line-height: 1; }
+.level-pill-n { font-family: 'Black Ops One', cursive; font-size: 16px; color: var(--ap); line-height: 1; }
+
+.end-turn-btn {
+  background: var(--ap); color: #000; padding: 8px 14px;
+  font-family: 'Bebas Neue', cursive; font-size: 13px; letter-spacing: 0.12em;
+  border-radius: 4px; box-shadow: 0 4px 10px rgba(240,180,41,0.35);
+  animation: et-pulse 2.2s infinite;
+}
+.end-turn-btn:hover { background: #ffd060; transform: translateY(-2px); box-shadow: 0 6px 18px rgba(240,180,41,0.5); }
+@keyframes et-pulse { 0%,100% { box-shadow: 0 4px 10px rgba(240,180,41,0.35); } 50% { box-shadow: 0 4px 18px rgba(240,180,41,0.6); } }
 
 /* ── BATTLEFIELDS ── */
 .opp-field, .my-field {
@@ -376,64 +430,84 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
 /* ════════════════════════════════════════════════════════════
    HUD — corner pillar + game log
 ════════════════════════════════════════════════════════════ */
-.game-hud {
-  position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
-  z-index: 40; display: flex; flex-direction: column; gap: 10px; align-items: stretch;
-}
-.hud-pill {
-  background: rgba(0,0,0,0.82); border: 1px solid var(--border-mid);
-  padding: 12px 16px; border-radius: 8px; text-align: center;
-  backdrop-filter: blur(6px); box-shadow: 0 4px 14px rgba(0,0,0,0.5);
-  display: flex; flex-direction: column; align-items: center; gap: 4px;
-}
-.hud-pill .hud-actions { display: flex; flex-direction: column; gap: 5px; width: 100%; }
-.hud-lbl { font-family: 'Bebas Neue', cursive; font-size: 10px; color: var(--dim); letter-spacing: 0.25em; }
-.hud-level { font-family: 'Black Ops One', cursive; font-size: 30px; color: var(--ap); text-shadow: 0 0 12px rgba(240,180,41,0.5); line-height: 1; }
+/* (game-hud / hud-pill removed — controls moved into player strip; level pill is inline) */
 
-.log-panel {
-  position: absolute; left: 14px; bottom: 200px; width: 230px;
-  background: rgba(0,0,0,0.72); border: 1px solid var(--border-soft);
-  border-radius: 6px; z-index: 15; backdrop-filter: blur(6px);
-  box-shadow: 0 4px 14px rgba(0,0,0,0.5);
-}
-.log-head {
-  padding: 7px 12px; font-family: 'Bebas Neue', cursive; font-size: 12px;
-  color: var(--or); border-bottom: 1px solid var(--border-soft); letter-spacing: 0.18em;
-}
-.log-body {
-  max-height: 140px; overflow-y: auto;
-  padding: 8px 12px; font-size: 10.5px; color: rgba(232,224,208,0.62); line-height: 1.55;
-}
-.log-body div { padding: 1px 0; }
+/* (older .log-panel/.log-head/.log-body removed — replaced by the redesigned block below in MODALS section) */
 
 /* ════════════════════════════════════════════════════════════
-   MODALS — zoom, help, winner
+   MODALS — zoom (full card only), help, winner
 ════════════════════════════════════════════════════════════ */
 .zoom-overlay, .overlay {
-  position: fixed; inset: 0; background: rgba(0,0,0,0.88);
-  backdrop-filter: blur(8px);
+  position: fixed; inset: 0; background: rgba(0,0,0,0.92);
+  backdrop-filter: blur(10px);
   display: flex; align-items: center; justify-content: center;
-  z-index: 1000; padding: 20px;
+  z-index: 1000; padding: 16px;
   animation: fade-in 0.18s ease;
 }
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
 
-.zoom-card {
-  width: 340px; max-width: 92vw; background: #111;
-  border: 2px solid var(--or); border-radius: 12px;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.8), 0 0 40px rgba(255,109,35,0.3);
-  overflow: hidden; animation: pop-in 0.22s cubic-bezier(0.2,0.8,0.2,1);
+/* Full-card zoom: image only, no manual text — the card has it all */
+.zoom-full {
+  position: relative; max-width: 92vw; max-height: 92vh;
+  display: flex; align-items: center; justify-content: center;
+  animation: pop-in 0.22s cubic-bezier(0.2,0.8,0.2,1);
 }
 @keyframes pop-in { from { transform: scale(0.88); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-.zoom-art { width: 100%; height: 280px; object-fit: cover; display: block; border-bottom: 2px solid var(--border-soft); }
-.zoom-art-fb { width: 100%; height: 280px; display: block; }
-.zoom-body { padding: 18px 20px; }
-.zoom-name { font-family: 'Black Ops One', cursive; font-size: 22px; color: #fff; margin-bottom: 4px; line-height: 1.1; }
-.zoom-meta { font-family: 'Bebas Neue', cursive; font-size: 12px; letter-spacing: 0.15em; color: var(--or); margin-bottom: 14px; }
-.zoom-stats { display: flex; gap: 18px; font-family: 'Bebas Neue', cursive; font-size: 17px; padding: 10px 0; border-top: 1px solid var(--border-soft); border-bottom: 1px solid var(--border-soft); margin-bottom: 14px; }
-.zoom-text { font-size: 12px; color: rgba(232,224,208,0.82); line-height: 1.7; }
-.zoom-kw { font-size: 11px; color: var(--ap); margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border-soft); }
-.zoom-footer { padding: 12px 20px 16px; display: flex; justify-content: space-between; align-items: center; gap: 10px; background: rgba(0,0,0,0.4); }
+.zoom-full-img {
+  max-width: min(92vw, 500px);
+  max-height: 92vh;
+  width: auto; height: auto;
+  display: block; object-fit: contain;
+  border-radius: 14px;
+  box-shadow: 0 20px 80px rgba(0,0,0,0.9), 0 0 60px rgba(255,109,35,0.25);
+}
+.zoom-full-img-fb {
+  width: min(86vw, 360px); aspect-ratio: 5/7;
+  border-radius: 14px; box-shadow: 0 20px 80px rgba(0,0,0,0.9);
+}
+.zoom-close {
+  position: absolute; top: -14px; right: -14px;
+  width: 44px; height: 44px; border-radius: 50%;
+  background: var(--bg-board); border: 2px solid var(--or);
+  color: var(--or); font-size: 18px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.7);
+  transition: background 0.15s, transform 0.1s;
+}
+.zoom-close:hover { background: var(--or); color: #000; transform: scale(1.08); }
+
+/* Game log floating button + panel */
+.log-fab {
+  position: absolute; bottom: 200px; left: 14px; z-index: 18;
+  width: 44px; height: 44px; border-radius: 50%;
+  background: rgba(0,0,0,0.82); border: 1px solid var(--border-mid);
+  color: var(--or); font-size: 18px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  backdrop-filter: blur(6px); box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+}
+.log-fab:hover { background: rgba(255,109,35,0.18); border-color: var(--or); }
+
+.log-panel {
+  position: absolute; bottom: 200px; left: 14px; width: 280px;
+  background: rgba(0,0,0,0.88); border: 1px solid var(--border-mid);
+  border-radius: 8px; z-index: 18; backdrop-filter: blur(8px);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.7);
+}
+.log-head {
+  padding: 8px 12px; font-family: 'Bebas Neue', cursive; font-size: 12px;
+  color: var(--or); border-bottom: 1px solid var(--border-soft); letter-spacing: 0.18em;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.log-x {
+  background: none; border: none; color: var(--dim); font-size: 14px; cursor: pointer;
+  padding: 2px 6px;
+}
+.log-x:hover { color: var(--cr); }
+.log-body {
+  max-height: 220px; overflow-y: auto;
+  padding: 8px 12px; font-size: 11px; color: rgba(232,224,208,0.62); line-height: 1.55;
+}
+.log-body div { padding: 2px 0; }
 
 .modal {
   background: var(--bg-board); border: 2px solid var(--or); padding: 26px;
@@ -619,7 +693,6 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
   .hand-strip .hcard { margin-left: -22px; }
   .field-label { font-size: 44px; }
   .log-panel { width: 200px; }
-  .game-hud { right: 8px; }
 }
 
 @media (max-width: 760px) {
@@ -633,8 +706,10 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
   .field-label { font-size: 30px; }
   .opp-field, .my-field { padding: 10px 12px; }
   .log-panel { display: none; }
-  .game-hud { right: 6px; transform: translateY(-30%); }
-  .hud-level { font-size: 22px; }
+  .end-turn-btn { padding: 6px 10px; font-size: 11px; }
+  .level-pill-n { font-size: 14px; }
+  .pile { width: 30px; height: 42px; }
+  .pile-n { font-size: 12px; }
   .boss-pick { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
   .deck-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
   .dtile-btn { width: 26px; height: 26px; font-size: 14px; }
