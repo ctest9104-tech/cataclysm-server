@@ -485,56 +485,131 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
 .progress-bar { height: 5px; background: rgba(255,109,35,0.12); margin-top: 8px; border-radius: 3px; overflow: hidden; }
 .progress-fill { height: 100%; background: linear-gradient(90deg, var(--or), #ffaa60); border-radius: 3px; transition: width 0.3s; }
 
-.boss-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; margin-bottom: 16px; }
-.boss2 {
-  background: var(--bg-card); border: 2px solid rgba(255,109,35,0.15);
-  border-radius: 8px; overflow: hidden; cursor: pointer;
-  transition: all 0.18s; box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+/* ════════════════════════════════════════════════════════════
+   DECK BUILDER — full-card-image grid (Hearthstone style)
+════════════════════════════════════════════════════════════ */
+.build-summary {
+  position: sticky; top: 60px; z-index: 10;
+  background: rgba(255,109,35,0.08); border: 1px solid rgba(255,109,35,0.25);
+  padding: 12px 16px; margin-bottom: 12px; font-size: 12px; border-radius: 6px;
+  backdrop-filter: blur(6px);
 }
-.boss2:hover { border-color: rgba(255,109,35,0.5); transform: translateY(-3px); box-shadow: 0 8px 20px rgba(0,0,0,0.55); }
-.boss2.sel { border-color: var(--or); box-shadow: 0 0 28px rgba(255,109,35,0.4), 0 8px 20px rgba(0,0,0,0.55); }
-.boss2-art { width: 100%; height: 140px; object-fit: cover; display: block; }
-.boss2-art-fb { width: 100%; height: 140px; display: block; }
-.boss2-body { padding: 10px 12px; }
-.boss2-name { font-family: 'Black Ops One', cursive; font-size: 13px; color: var(--cr); margin-bottom: 6px; line-height: 1.2; }
-.boss2-stats { display: flex; gap: 10px; font-family: 'Bebas Neue', cursive; font-size: 11px; margin-bottom: 6px; }
-.b2hp { color: var(--su); }
-.b2atk { color: var(--or); }
-.b2cost { color: var(--dim); }
-.boss2-text { font-size: 10px; color: rgba(232,224,208,0.55); line-height: 1.55; }
+.progress-bar { height: 5px; background: rgba(255,109,35,0.12); margin-top: 8px; border-radius: 3px; overflow: hidden; }
+.progress-fill { height: 100%; background: linear-gradient(90deg, var(--or), #ffaa60); border-radius: 3px; transition: width 0.3s; }
 
-.deck-grid { display: flex; flex-direction: column; gap: 6px; max-height: 56vh; overflow-y: auto; padding: 2px 6px 2px 2px; }
-.dcard2 {
-  display: flex; background: var(--bg-card); border: 1px solid var(--border-soft);
-  border-radius: 6px; overflow: hidden; position: relative;
-  transition: border-color 0.15s, background 0.15s;
+/* ── BOSS PICKER — full card images at 5:7 ─────────────── */
+.boss-pick {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 14px; margin-bottom: 18px;
 }
-.dcard2:hover { border-color: rgba(255,109,35,0.4); background: rgba(255,109,35,0.04); }
-.dcard2-art-wrap { width: 92px; flex-shrink: 0; position: relative; }
-.dcard2-art { width: 92px; height: 100%; min-height: 96px; object-fit: cover; display: block; }
-.dcard2-art-fb { width: 92px; min-height: 96px; display: block; }
-.dcard2-ftag { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,0.82); font-size: 8px; letter-spacing: 0.18em; text-align: center; padding: 2px; font-family: 'Bebas Neue', cursive; }
-.dcard2-info { flex: 1; padding: 9px 12px 7px; min-width: 0; }
-.dcard2-name { font-family: 'Black Ops One', cursive; font-size: 12px; color: var(--cr); margin-bottom: 3px; line-height: 1.2; }
-.dcard2-meta { font-size: 9.5px; color: var(--dim); margin-bottom: 5px; letter-spacing: 0.05em; }
-.dcard2-text { font-size: 9.5px; color: rgba(232,224,208,0.55); line-height: 1.6; margin-bottom: 7px; }
-.dcard2-ibtn {
-  position: absolute; top: 6px; right: 6px;
-  background: rgba(0,0,0,0.75); border: 1px solid rgba(255,109,35,0.4);
-  color: var(--or); font-size: 10px; padding: 3px 8px; cursor: pointer;
-  border-radius: 3px;
+.boss-tile {
+  background: var(--bg-card); border: 2px solid rgba(255,109,35,0.18);
+  border-radius: 10px; overflow: hidden; cursor: pointer;
+  transition: transform 0.18s cubic-bezier(0.2,0.8,0.2,1), border-color 0.18s, box-shadow 0.18s;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.45);
+  display: flex; flex-direction: column;
 }
-.dcard2-ibtn:hover { background: rgba(255,109,35,0.2); }
-.qty-ctl { display: flex; align-items: center; gap: 10px; }
-.qty-ctl button {
-  width: 28px; height: 28px; background: rgba(255,109,35,0.12);
-  border: 1px solid var(--or); color: var(--or); font-size: 16px;
-  display: flex; align-items: center; justify-content: center; border-radius: 3px;
-  cursor: pointer; transition: background 0.12s;
+.boss-tile:hover { transform: translateY(-4px); border-color: rgba(255,109,35,0.55); box-shadow: 0 10px 24px rgba(0,0,0,0.6); }
+.boss-tile.sel {
+  border-color: var(--or);
+  box-shadow: 0 0 32px rgba(255,109,35,0.5), 0 10px 24px rgba(0,0,0,0.6);
 }
-.qty-ctl button:hover { background: rgba(255,109,35,0.3); }
-.qty-ctl .n { min-width: 22px; text-align: center; color: var(--or); font-weight: bold; font-size: 14px; font-family: 'Bebas Neue', cursive; }
-.qty-ctl .n.has { color: #fff; }
+.boss-tile-img {
+  width: 100%; display: block;
+  aspect-ratio: 5 / 7;
+  object-fit: contain;
+  background: #000;
+}
+.boss-tile-img-fb {
+  width: 100%; display: block;
+  aspect-ratio: 5 / 7;
+}
+.boss-tile-cap {
+  padding: 8px 10px;
+  font-family: 'Bebas Neue', cursive; font-size: 13px;
+  letter-spacing: 0.08em; color: var(--cr);
+  background: rgba(0,0,0,0.6);
+  border-top: 1px solid var(--border-soft);
+  text-align: center;
+}
+
+/* ── DECK CARD GRID — full card images with qty controls ── */
+.deck-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 14px;
+  padding: 4px;
+  max-height: none;
+}
+.dtile {
+  position: relative;
+  background: var(--bg-card);
+  border: 2px solid var(--border-soft);
+  border-radius: 10px; overflow: hidden;
+  display: flex; flex-direction: column;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.45);
+  transition: transform 0.18s, border-color 0.18s, box-shadow 0.18s;
+}
+.dtile:hover { transform: translateY(-3px); box-shadow: 0 10px 20px rgba(0,0,0,0.55); }
+.dtile.has { border-color: rgba(118,196,66,0.5); box-shadow: 0 0 16px rgba(118,196,66,0.18), 0 4px 10px rgba(0,0,0,0.45); }
+.dtile.max { border-color: var(--ap); box-shadow: 0 0 22px rgba(240,180,41,0.35), 0 4px 10px rgba(0,0,0,0.45); }
+.dtile-img {
+  width: 100%; display: block;
+  aspect-ratio: 5 / 7;
+  object-fit: contain;
+  background: #000;
+}
+.dtile-img-fb {
+  width: 100%; display: block;
+  aspect-ratio: 5 / 7;
+}
+.dtile-count {
+  position: absolute; top: 8px; right: 8px; z-index: 4;
+  background: var(--su); color: #000;
+  font-family: 'Black Ops One', cursive; font-size: 14px;
+  padding: 3px 9px; border-radius: 4px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.6);
+  border: 1px solid rgba(0,0,0,0.4);
+}
+.dtile.max .dtile-count { background: var(--ap); }
+.dtile-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 6px; padding: 6px 8px;
+  background: rgba(0,0,0,0.75);
+  border-top: 1px solid var(--border-soft);
+}
+.dtile-btn {
+  width: 30px; height: 30px;
+  background: rgba(255,109,35,0.14);
+  border: 1px solid var(--or); color: var(--or);
+  font-size: 16px; font-weight: bold;
+  border-radius: 4px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.12s, transform 0.1s;
+  font-family: 'Bebas Neue', cursive;
+}
+.dtile-btn:hover:not(:disabled) { background: rgba(255,109,35,0.32); transform: scale(1.08); }
+.dtile-btn:active:not(:disabled) { transform: scale(0.94); }
+.dtile-btn:disabled { opacity: 0.3; cursor: not-allowed; border-color: var(--dim); color: var(--dim); background: transparent; }
+.dtile-n {
+  font-family: 'Bebas Neue', cursive;
+  font-size: 14px; color: var(--cr);
+  min-width: 30px; text-align: center;
+  letter-spacing: 0.08em;
+}
+.dtile.has .dtile-n { color: var(--su); }
+.dtile.max .dtile-n { color: var(--ap); }
+.dtile-info {
+  position: absolute; top: 8px; left: 8px; z-index: 4;
+  width: 22px; height: 22px; border-radius: 50%;
+  background: rgba(0,0,0,0.75); border: 1px solid var(--border-mid);
+  color: var(--cr); font-size: 12px; font-family: serif; font-style: italic;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.12s;
+}
+.dtile-info:hover { background: var(--or); color: #000; border-color: var(--or); }
 
 /* ════════════════════════════════════════════════════════════
    RESPONSIVE
@@ -560,8 +635,10 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
   .log-panel { display: none; }
   .game-hud { right: 6px; transform: translateY(-30%); }
   .hud-level { font-size: 22px; }
-  .boss-pick { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
-  .boss2-art, .boss2-art-fb { height: 110px; }
+  .boss-pick { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .deck-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+  .dtile-btn { width: 26px; height: 26px; font-size: 14px; }
+  .dtile-bar { padding: 5px 6px; }
   .winner-screen h1 { font-size: 44px; }
   .codebox { font-size: 24px; padding: 10px 16px; }
-   }
+}
