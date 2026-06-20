@@ -546,27 +546,23 @@ function renderBuild(){
     h+='<div class="section-h">2. CHOOSE YOUR BOSS</div>';
     if(!bosses.length)h+='<div class="small" style="padding:8px">No bosses for this faction combo — try Synth or Mystic.</div>';
     h+='<div class="boss-pick">';
-    bosses.forEach(b=>{h+=`<div class="boss2${me.bossId===b.id?' sel':''}" onclick="pickBoss('${b.id}')">
-      ${artImg(b.id,'boss2-art')}
-      <div class="boss2-body">
-        <div class="boss2-name">${b.name}</div>
-        <div class="boss2-stats"><span class="b2hp">&#10084;${b.hp}</span><span class="b2atk">&#9876;${b.atk}</span><span class="b2cost">ATK:${b.atkCost}&#9711;</span></div>
-        <div class="boss2-text">${(b.text||'').slice(0,120)}</div>
-      </div></div>`;});
+    bosses.forEach(b=>{h+=`<div class="boss-tile${me.bossId===b.id?' sel':''}" onclick="pickBoss('${b.id}')" oncontextmenu="showZoom('${b.id}');return false" title="${b.name}">
+      ${artImg(b.id,'boss-tile-img')}
+      <div class="boss-tile-cap">${b.name}${me.bossId===b.id?' <span style="color:var(--ap)">&#10003;</span>':''}</div>
+    </div>`;});
     h+='</div><div class="section-h">3. BUILD 39 CARDS (MAX 3 COPIES EACH)</div>';
     h+=`<div class="build-summary">${total}/39 cards &nbsp;&#8226;&nbsp; ${Object.values(me.list||{}).filter(v=>v>0).length} unique cards<div class="progress-bar"><div class="progress-fill" style="width:${Math.min(100,total/39*100)}%"></div></div></div>`;
     h+='<div class="deck-grid">';
-    nonBoss.forEach(c=>{const n=(me.list||{})[c.id]||0;const fCol=FCOL[c.faction]||'#888';
-      const typeStr=c.type==='fighter'?`FIGHTER L${c.level||'?'}`:c.type==='weapon'?`WEAPON L${c.level||'?'}`:c.type.toUpperCase()+(c.cost!==undefined?' \u00b7 '+c.cost+'\u29bb':'');
-      h+=`<div class="dcard2">
-        <div class="dcard2-art-wrap">${artImg(c.id,'dcard2-art')}<div class="dcard2-ftag" style="color:${fCol}">${(c.faction||'').toUpperCase()}</div></div>
-        <div class="dcard2-info">
-          <div class="dcard2-name" style="color:${fCol}">${c.name}</div>
-          <div class="dcard2-meta">${typeStr}</div>
-          <div class="dcard2-text">${(c.text||'').slice(0,95)}</div>
-          <div class="qty-ctl"><button onclick="adjustCard('${c.id}',-1)">&#8722;</button><span class="n${n>0?' has':''}">${n}</span><button onclick="adjustCard('${c.id}',1)">+</button></div>
+    nonBoss.forEach(c=>{const n=(me.list||{})[c.id]||0;
+      h+=`<div class="dtile${n>0?' has':''}${n>=3?' max':''}" oncontextmenu="showZoom('${c.id}');return false" title="${c.name} \u2014 right-click for details">
+        ${artImg(c.id,'dtile-img')}
+        ${n>0?`<div class="dtile-count">&#215;${n}</div>`:''}
+        <div class="dtile-bar">
+          <button class="dtile-btn" onclick="adjustCard('${c.id}',-1)" ${n===0?'disabled':''}>&#8722;</button>
+          <span class="dtile-n">${n}/3</span>
+          <button class="dtile-btn" onclick="adjustCard('${c.id}',1)" ${n>=3?'disabled':''}>+</button>
         </div>
-        <button class="dcard2-ibtn" onclick="showZoom('${c.id}')">&#9432;</button>
+        <button class="dtile-info" onclick="showZoom('${c.id}')" title="View card details">i</button>
       </div>`;
     });
     h+='</div>';
