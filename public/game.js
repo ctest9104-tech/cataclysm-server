@@ -62,6 +62,12 @@ function ingestCard(o){
   if(o.atkCost!==undefined&&o.atkCost!=='')c.atkCost=Number(o.atkCost);
   if(o.atk!==undefined&&o.atk!=='')c.atk=Number(o.atk);
   if(o.cost!==undefined&&o.cost!=='')c.cost=Number(o.cost);
+  /* Weapon attack bonus — accepts numbers or "X" (variable, treated as 0 base) */
+  if(o.atkMod!==undefined&&o.atkMod!==''){
+    const n=Number(o.atkMod);
+    c.atkMod=isNaN(n)?0:n;        /* "X" parses to NaN → 0 base, players adjust via GM panel */
+    if(isNaN(n))c.atkModVariable=true;
+  }
   if(o.speed)c.speed=o.speed; else if(o.type==='response')c.speed='instant'; else if(o.type==='tactic')c.speed='sorcery';
   /* sensible defaults so the engine never breaks on missing numbers */
   if(c.kind==='fighter'||c.kind==='boss'){ if(c.hp===undefined)c.hp=1; if(c.atk===undefined)c.atk=0; if(c.atkCost===undefined)c.atkCost=0; }
@@ -442,6 +448,66 @@ window.returnToLobby=async function(){await act(r=>{r.phase='lobby';r.players.fo
 window.leaveTable=function(){unsubscribeRoom();history.replaceState({},'',window.location.pathname);S.screen='home';S.code=null;S.room=null;S.myId=null;render();};
 window.toggleHelp=function(){S.helpOpen=!S.helpOpen;render();};
 window.toggleLog=function(){S.logOpen=!S.logOpen;render();};
+window.toggleGm=function(){S.gmMode=!S.gmMode;S.gmEditUid=null;render();};
+window.gmEdit=function(uid){S.gmEditUid=uid;render();};
+window.gmCloseEdit=function(){S.gmEditUid=null;render();};
+window.gmAdjustHp=async function(uid,delta){
+  await act(r=>{const gp=r.game;const i=gp.inst[uid];if(!i)return;const c=CARDS[i.cid];
+    i.hp=Math.max(0,Math.min((i.maxHp||c.hp||1)+10,i.hp+delta));
+    log(gp,'[GM] '+c.name+' HP '+(delta>0?'+':'')+delta+' \u2192 '+i.hp);
+    if(i.hp<=0){destroyInstance(gp,uid,{skipFortify:true});S.gmEditUid=null;}
+    checkWin(gp);});
+};
+window.gmAdjustMaxHp=async function(uid,delta){
+  await act(r=>{const gp=r.game;const i=gp.inst[uid];if(!i)return;const c=CARDS[i.cid];
+    i.maxHp=Math.max(1,i.maxHp+delta);if(i.hp>i.maxHp)i.hp=i.maxHp;
+    log(gp,'[GM] '+c.name+' Max HP \u2192 '+i.maxHp);});
+};
+window.gmAdjustAtk=async function(uid,delta){
+  await act(r=>{const gp=r.game;const i=gp.inst[uid];if(!i)return;const c=CARDS[i.cid];
+    i.counters=i.counters||{};i.counters.atk=(i.counters.atk||0)+delta;
+    log(gp,'[GM] '+c.name+' +1 Atk counters: '+(i.counters.atk));});
+};
+window.gmToggleStun=async function(uid){
+  await act(r=>{const gp=r.game;const i=gp.inst[uid];if(!i)return;
+    i.stunned=!i.stunned;log(gp,'[GM] '+CARDS[i.cid].name+' '+(i.stunned?'STUNNED':'unstunned')+'.');});
+};
+window.gmTogglePhantasmal=async function(uid){
+  await act(r=>{const gp=r.game;const i=gp.inst[uid];if(!i)return;
+    i.phantasmal=!i.phantasmal;log(gp,'[GM] '+CARDS[i.cid].name+' Phantasmal: '+i.phantasmal);});
+};
+window.gmUntap=async function(uid){
+  await act(r=>{const gp=r.game;const i=gp.inst[uid];if(!i)return;
+    i.actedCount=0;log(gp,'[GM] '+CARDS[i.cid].name+' untapped (can act again).');});
+};
+window.gmHealFull=async function(uid){
+  await act(r=>{const gp=r.game;const i=gp.inst[uid];if(!i)return;
+    i.hp=i.maxHp;log(gp,'[GM] '+CARDS[i.cid].name+' healed to full.');});
+};
+window.gmDestroy=async function(uid){
+  if(!confirm('Destroy this card (move to graveyard)?'))return;
+  await act(r=>{const gp=r.game;destroyInstance(gp,uid,{skipFortify:true});S.gmEditUid=null;});
+};
+window.gmAdjustCoins=async function(pid,delta){
+  await act(r=>{const gp=r.game;gp.p[pid].coins=Math.max(0,gp.p[pid].coins+delta);
+    log(gp,'[GM] '+gp.p[pid].name+' coins '+(delta>0?'+':'')+delta+' \u2192 '+gp.p[pid].coins);});
+};
+window.gmDraw=async function(pid){
+  await act(r=>{const gp=r.game;drawN(gp,pid,1);log(gp,'[GM] '+gp.p[pid].name+' draws a card.');});
+};
+window.gmDiscard=async function(pid){
+  await act(r=>{const gp=r.game;const hand=gp.p[pid].hand;if(!hand.length)return;
+    const u=hand[hand.length-1];moveZone(gp,pid,u,'hand','grave');
+    log(gp,'[GM] '+gp.p[pid].name+' discards '+CARDS[gp.inst[u].cid].name+'.');});
+};
+window.gmAdvanceLevel=async function(){
+  if(!confirm('Force advance to next level?'))return;
+  await act(r=>{advanceLevel(r.game,r.settings);log(r.game,'[GM] Level forced.');});
+};
+window.gmRetap=async function(pid){
+  await act(r=>{const gp=r.game;gp.p[pid].board.concat([gp.p[pid].boss]).forEach(u=>{if(u&&gp.inst[u]){gp.inst[u].actedCount=0;gp.inst[u].armorUsedThisLevel=0;}});
+    log(gp,'[GM] All '+gp.p[pid].name+'\u2019s units untapped.');});
+};
 window.copyCode=function(){const url=window.location.origin+window.location.pathname+'?room='+S.code;try{navigator.clipboard.writeText(url);}catch(e){const t=document.createElement('textarea');t.value=url;document.body.appendChild(t);t.select();document.execCommand('copy');document.body.removeChild(t);}};
 window.showZoom=function(cid){S.zoomCid=cid;render();};
 window.closeZoom=function(){S.zoomCid=null;render();};
@@ -461,6 +527,13 @@ function bCard(gp,uid,opts){
   let cls='bcard'+(s.kind==='boss'?' is-boss':'')+(s.tapped?' is-tapped':'')+(clickable?' is-target':'')+(s.keywords.includes('Stunned')?' is-stun':'');
   const clickFn=isAtkTgt?`confirmAttack('${uid}')`:(isPendTgt?`resolvePending('${uid}')`:null);
   const wNames=(i.wielded||[]).filter(wu=>gp.inst[wu]).map(wu=>CARDS[gp.inst[wu].cid].name).join(', ');
+  /* Build attack breakdown so weapon/counter bonuses are visible */
+  const baseAtk=c.atk||0;
+  const counterAtk=(i.counters&&i.counters.atk)||0;
+  const tempAtk=i.tempAtk||0;
+  const weaponBonus=(i.wielded||[]).reduce((sum,wu)=>{const wc=CARDS[gp.inst[wu].cid];return sum+(wc&&wc.atkMod||0);},0);
+  const hasBonus=counterAtk+tempAtk+weaponBonus!==0;
+  const atkDisplay=hasBonus?`${s.atk}<span class="atk-base">(${baseAtk}${counterAtk?'+'+counterAtk+'c':''}${weaponBonus?'+'+weaponBonus+'w':''}${tempAtk?'+'+tempAtk+'t':''})</span>`:`${s.atk}`;
   let actBtns='';
   if(!isOpp&&myTurn&&!pend&&!S.attackPick){
     if(!s.tapped)actBtns+=`<button class="bcard-btn atk-btn" onclick="startAttack('${uid}')">&#9876; ATK</button>`;
@@ -470,9 +543,10 @@ function bCard(gp,uid,opts){
   return`<div class="zone-wrap"><div class="${cls}" style="border-color:${clickable?'var(--ap)':fCol+'40'}"${clickFn?` onclick="${clickFn}"`:''}
     oncontextmenu="showZoom('${i.cid}');return false">
     ${artImg(i.cid,'bcard-art')}
+    ${S.gmMode?`<button class="bcard-gm" onclick="event.stopPropagation();gmEdit('${uid}')" title="GM edit">&#9881;</button>`:''}
     <div class="bcard-strip">
       <div class="bcard-name" style="color:${fCol}">${s.name}</div>
-      <div class="bcard-stats"><span class="b-hp">&#10084;${s.hp}/${s.maxHp}</span><span class="b-atk">&#9876;${s.atk}</span></div>
+      <div class="bcard-stats"><span class="b-hp">&#10084;${s.hp}/${s.maxHp}</span><span class="b-atk">&#9876;${atkDisplay}</span></div>
       ${s.keywords.length?`<div class="bcard-kw">${s.keywords.map(k=>`<span class="bdg${k==='Enforcer'?' en':k==='Stunned'?' st':''}">${k.slice(0,3)}</span>`).join('')}</div>`:''}
       ${wNames?`<div class="bcard-wield">&#128481;${wNames}</div>`:''}
     </div>
@@ -684,8 +758,94 @@ function renderPlay(){
     h+=`<button class="log-fab" onclick="toggleLog()" title="Show game log">&#9776;</button>`;
   }
 
+  h+=renderGmPanel(gp);
+
   h+='</div>';
+  h+=renderGmEdit(gp);
   return h;
+}
+
+function renderGmPanel(gp){
+  if(!S.gmMode)return'';
+  let h='<div class="gm-panel"><div class="gm-panel-head">GM TOOLS</div><div class="gm-panel-body">';
+  h+='<div class="gm-row"><span class="gm-row-lbl">LEVEL '+gp.level+'</span><button class="gm-mini" onclick="gmAdvanceLevel()" title="Force next level">&#187; Next Level</button></div>';
+  gp.order.forEach(pid=>{const p=gp.p[pid];
+    h+=`<div class="gm-player">
+      <div class="gm-player-name">${p.name}${p.defeated?' &#128128;':''}</div>
+      <div class="gm-row">
+        <span class="gm-row-lbl">${p.coins} \u{1F4B0}</span>
+        <button class="gm-mini" onclick="gmAdjustCoins('${pid}',-1)">&#8722;1</button>
+        <button class="gm-mini" onclick="gmAdjustCoins('${pid}',1)">+1</button>
+      </div>
+      <div class="gm-row">
+        <span class="gm-row-lbl">Hand ${p.hand.length}</span>
+        <button class="gm-mini" onclick="gmDraw('${pid}')" title="Draw card">+Draw</button>
+        <button class="gm-mini" onclick="gmDiscard('${pid}')" title="Discard last card">-Discard</button>
+      </div>
+      <div class="gm-row"><button class="gm-mini wide" onclick="gmRetap('${pid}')" title="Untap all units">Untap All</button></div>
+    </div>`;
+  });
+  h+='<div class="gm-foot">Click &#9881; on any board card to edit its HP / counters / status.</div>';
+  h+='</div></div>';
+  return h;
+}
+
+function renderGmEdit(gp){
+  if(!S.gmMode||!S.gmEditUid)return'';
+  const uid=S.gmEditUid;const i=gp.inst[uid];if(!i)return'';
+  const c=CARDS[i.cid];if(!c)return'';
+  const counterAtk=(i.counters&&i.counters.atk)||0;
+  return`<div class="overlay" onclick="if(event.target===this)gmCloseEdit()">
+    <div class="gm-edit">
+      <div class="gm-edit-head">
+        <div>
+          <div class="gm-edit-name">${c.name}</div>
+          <div class="gm-edit-sub">${c.type.toUpperCase()}${c.sub?' \u00b7 '+c.sub:''}</div>
+        </div>
+        <button class="gm-edit-x" onclick="gmCloseEdit()">&#10005;</button>
+      </div>
+      <div class="gm-edit-body">
+        <div class="gm-edit-stat">
+          <div class="gm-edit-lbl">HEALTH</div>
+          <div class="gm-edit-val">${i.hp} / ${i.maxHp}</div>
+          <div class="gm-edit-ctl">
+            <button class="gm-mini" onclick="gmAdjustHp('${uid}',-1)">&#8722;1</button>
+            <button class="gm-mini" onclick="gmAdjustHp('${uid}',1)">+1</button>
+            <button class="gm-mini" onclick="gmHealFull('${uid}')">Heal Full</button>
+          </div>
+        </div>
+        <div class="gm-edit-stat">
+          <div class="gm-edit-lbl">MAX HP</div>
+          <div class="gm-edit-val">${i.maxHp}</div>
+          <div class="gm-edit-ctl">
+            <button class="gm-mini" onclick="gmAdjustMaxHp('${uid}',-1)">&#8722;1</button>
+            <button class="gm-mini" onclick="gmAdjustMaxHp('${uid}',1)">+1</button>
+          </div>
+        </div>
+        <div class="gm-edit-stat">
+          <div class="gm-edit-lbl">+1 ATTACK COUNTERS</div>
+          <div class="gm-edit-val">${counterAtk}</div>
+          <div class="gm-edit-ctl">
+            <button class="gm-mini" onclick="gmAdjustAtk('${uid}',-1)">&#8722;1</button>
+            <button class="gm-mini" onclick="gmAdjustAtk('${uid}',1)">+1</button>
+          </div>
+        </div>
+        <div class="gm-edit-stat">
+          <div class="gm-edit-lbl">STATUS</div>
+          <div class="gm-edit-ctl">
+            <button class="gm-mini${i.stunned?' on':''}" onclick="gmToggleStun('${uid}')">${i.stunned?'\u2713 Stunned':'Stun'}</button>
+            <button class="gm-mini${i.phantasmal?' on':''}" onclick="gmTogglePhantasmal('${uid}')">${i.phantasmal?'\u2713 Phantasmal':'Phantasmal'}</button>
+            <button class="gm-mini" onclick="gmUntap('${uid}')">Untap</button>
+          </div>
+        </div>
+        <div class="gm-edit-stat">
+          <div class="gm-edit-ctl">
+            <button class="gm-mini danger" onclick="gmDestroy('${uid}')">&#9760; Destroy (\u2192 Discard)</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>`;
 }
 
 function renderWinner(gp){
@@ -707,7 +867,8 @@ function render(){
     return;
   }
   if(S.screen==='home'){app.innerHTML=renderHome()+(S.zoomCid?renderZoom():'');return;}
-  let h=`<div id="topbar"><div class="code">TABLE ${S.code||''}</div><div style="display:flex;gap:8px"><button class="btn ghost sm" onclick="toggleHelp()">Keywords</button><button class="btn ghost sm" onclick="leaveTable()">Leave</button></div></div>`;
+  const inGame=S.room&&S.room.phase==='play';
+  let h=`<div id="topbar"><div class="code">TABLE ${S.code||''}</div><div style="display:flex;gap:8px">${inGame?`<button class="btn ghost sm${S.gmMode?' gm-on':''}" onclick="toggleGm()" title="Toggle Game Master mode: manual overrides for HP, counters, status, coins, etc.">GM ${S.gmMode?'ON':'OFF'}</button>`:''}<button class="btn ghost sm" onclick="toggleHelp()">Keywords</button><button class="btn ghost sm" onclick="leaveTable()">Leave</button></div></div>`;
   if(S.room){
     if(S.room.phase==='lobby')h+=renderLobby();
     else if(S.room.phase==='build')h+=renderBuild();
