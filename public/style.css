@@ -1,6 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════
-   CATACLYSM ARCADE — COMPLETE MASTER STYLESHEET
-   TCG Arena board aesthetics + full UI coverage
+   CATACLYSM ARCADE — STYLESHEET
 ═══════════════════════════════════════════════════════════════ */
 @import url('https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Bebas+Neue&family=Share+Tech+Mono&display=swap');
 
@@ -428,15 +427,6 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
 .action-opt:hover { background: var(--ap); color: #000; transform: scale(1.04); }
 
 /* ════════════════════════════════════════════════════════════
-   HUD — corner pillar + game log
-════════════════════════════════════════════════════════════ */
-/* (game-hud / hud-pill removed — controls moved into player strip; level pill is inline) */
-
-/* (older .log-panel/.log-head/.log-body removed — replaced by the redesigned block below in MODALS section) */
-
-/* ════════════════════════════════════════════════════════════
-   MODALS — zoom (full card only), help, winner
-════════════════════════════════════════════════════════════ */
 .zoom-overlay, .overlay {
   position: fixed; inset: 0; background: rgba(0,0,0,0.92);
   backdrop-filter: blur(10px);
@@ -446,7 +436,7 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
 }
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
 
-/* Full-card zoom: image only, no manual text — the card has it all */
+/* Full-card zoom */
 .zoom-full {
   position: relative; max-width: 92vw; max-height: 92vh;
   display: flex; align-items: center; justify-content: center;
