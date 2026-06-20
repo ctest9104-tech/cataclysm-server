@@ -67,6 +67,32 @@ function ingestCard(o){
   if(c.kind==='fighter'||c.kind==='boss'){ if(c.hp===undefined)c.hp=1; if(c.atk===undefined)c.atk=0; if(c.atkCost===undefined)c.atkCost=0; }
   if(c.cost===undefined)c.cost=0;
   if(c.level===undefined&&(c.type==='fighter'||c.type==='weapon'))c.level=1;
+
+  /* ─── KEYWORD AUTOMATION: parse text and keywords into engine flags ─── */
+  const text=(c.text||'')+' '+(c.keywords||[]).join(' ');
+  const lowText=text.toLowerCase();
+  /* Armor N - parse number after "Armor" */
+  const armorMatch=text.match(/Armor\s+(\d+)/i);
+  if(armorMatch){ c.armor=Number(armorMatch[1]); if(!c.keywords.includes('Armor'))c.keywords.push('Armor'); }
+  /* Determination - die-replacement: set to 1HP with +1 atk counter */
+  if(/\bDetermination\b/.test(text)){ c.determination=true; if(!c.keywords.includes('Determination'))c.keywords.push('Determination'); }
+  /* Phantasmal - alive-state buff: tag for engine */
+  if(/\bPhantasmal\b/.test(text)){ c.canPhantasmal=true; if(!c.keywords.includes('Phantasmal')&&/be(comes?|come)\s+Phantasmal/i.test(text))c.keywords.push('Phantasmal'); }
+  /* Agility - extra tap per level */
+  if(/\bAgility\b/.test(text)&&!c.keywords.includes('Agility')){ c.keywords.push('Agility'); }
+  /* Stealthy */
+  if(/\bStealthy\b/.test(text)&&!c.keywords.includes('Stealthy')){ c.keywords.push('Stealthy'); }
+  /* Enforcer */
+  if(/\bEnforcer\b/.test(text)&&!c.keywords.includes('Enforcer')){ c.keywords.push('Enforcer'); }
+  /* Fortify - die-replacement, becomes Fortification under another unit */
+  if(/\bFortify\b/.test(text)){ c.fortifyInstead=true; if(!c.keywords.includes('Fortify'))c.keywords.push('Fortify'); }
+  /* Block - ability to redirect attacks (rendered as activated, manual choice) */
+  if(/\bBlock\b/.test(text)&&!c.keywords.includes('Block')){ c.keywords.push('Block'); }
+  /* Shadowstriker-style: ignores Enforcer */
+  if(/can attack as though.*do(?:es)?n.t have Enforcer/i.test(text)){ c.atkFlags=c.atkFlags||{}; c.atkFlags.ignoreEnforcer=true; }
+  /* Can't be blocked */
+  if(/can.t be blocked/i.test(text)){ c.atkFlags=c.atkFlags||{}; c.atkFlags.unblockable=true; }
+
   CARDS[c.id]=c;
 }
 
@@ -191,10 +217,36 @@ function destroyInstance(gp,uid,opts){
 }
 function dealDamage(gp,uid,amt){
   const i=gp.inst[uid];if(!i||i.hp<=0)return;const c=CARDS[i.cid];if(!c)return;
-  let reduced=amt;if(c.armor)reduced=Math.max(0,amt-c.armor);
+  let reduced=amt;
+  /* Armor: prevent N damage each level (resets each level via i.armorUsedThisLevel) */
+  if(c.armor){
+    const armorLeft=c.armor-(i.armorUsedThisLevel||0);
+    if(armorLeft>0){
+      const blocked=Math.min(armorLeft,amt);
+      reduced=Math.max(0,amt-blocked);
+      i.armorUsedThisLevel=(i.armorUsedThisLevel||0)+blocked;
+      if(blocked>0)log(gp,c.name+' Armor blocks '+blocked+' damage.');
+    }
+  }
   i.hp-=reduced;i.dmgThisLevel=true;
-  log(gp,c.name+' takes '+reduced+' damage'+(c.armor&&reduced<amt?' (Armor)':'')+'.');
-  if(i.hp<=0)destroyInstance(gp,uid);else checkWin(gp);
+  if(reduced>0)log(gp,c.name+' takes '+reduced+' damage.');
+  if(i.hp<=0){
+    /* Determination: if would die without a +1 Attack counter, set to 1 HP and give counter */
+    if(c.determination&&!(i.counters&&i.counters.atk>0)){
+      i.hp=1;
+      i.counters=i.counters||{};i.counters.atk=(i.counters.atk||0)+1;
+      log(gp,c.name+' uses Determination (set to 1 HP, +1 Attack counter).');
+      return;
+    }
+    /* Phantasmal: dies on damage taken, but Phantasmal status removes counter and survives */
+    if(i.phantasmal){
+      i.phantasmal=false;i.hp=1;
+      if(i.counters&&i.counters.atk>0)i.counters.atk-=1;
+      log(gp,c.name+' is no longer Phantasmal.');
+      return;
+    }
+    destroyInstance(gp,uid);
+  } else checkWin(gp);
 }
 function pendTarget(gp,opts,cb){
   const valid=allBoard(gp).filter(u=>{const s=instSummary(gp,u);if(!s||s.dead)return false;return opts.filter(Object.assign({},s,{owner:gp.inst[u].owner,cid:gp.inst[u].cid}));});
@@ -224,7 +276,7 @@ function levelStart(gp,settings){
   gp.fighterLeftThisLevel=false;gp.ignoreStealthyLevel=false;
   Object.keys(gp.p).forEach(pid=>{
     if(gp.p[pid].defeated)return;
-    gp.p[pid].board.concat([gp.p[pid].boss]).forEach(u=>{if(!u)return;const i=gp.inst[u];if(!i)return;i.actedCount=0;i.tempAtk=0;i.costOverrideLevel=undefined;if(i.stunned)i.stunned=false;});
+    gp.p[pid].board.concat([gp.p[pid].boss]).forEach(u=>{if(!u)return;const i=gp.inst[u];if(!i)return;i.actedCount=0;i.tempAtk=0;i.costOverrideLevel=undefined;i.armorUsedThisLevel=0;if(i.stunned)i.stunned=false;});
     const hadNone=gp.p[pid].hand.length===0;
     drawN(gp,pid,settings.drawPerLevel||1);
     if(hadNone&&gp.inst[gp.p[pid].boss]&&gp.inst[gp.p[pid].boss].cid==='trapper')drawN(gp,pid,1);
@@ -329,7 +381,7 @@ window.adjustCard=async function(cid,delta){await act(r=>{const me=r.players.fin
 window.markReady=async function(){await act(r=>{const me=r.players.find(p=>p.id===S.myId);const total=Object.values(me.list).reduce((a,b)=>a+b,0);if(!me.bossId)return alert('Pick a Boss first.');if(total!==39)return alert('You need exactly 39 non-Boss cards (currently '+total+').');me.ready=true;});};
 window.unready=async function(){await act(r=>{r.players.find(p=>p.id===S.myId).ready=false;});};
 window.beginGame=async function(){await act(r=>{startGame(r);});};
-window.doMulligan=async function(){await act(r=>{const gp=r.game;const pid=S.myId;if(gp.p[pid].mullUsed)return;const hand=gp.p[pid].hand.slice();gp.p[pid].deck=shuffle(gp.p[pid].deck.concat(hand));gp.p[pid].hand=[];drawN(gp,pid,r.settings.startHand);gp.p[pid].mullUsed=true;log(gp,gp.p[pid].name+' mulligans.');});};
+window.doMulligan=async function(){await act(r=>{const gp=r.game;const pid=S.myId;if(gp.p[pid].mullUsed)return;if(gp.level!==1)return;if(gp.p[pid].hasActed)return;const hand=gp.p[pid].hand.slice();gp.p[pid].deck=shuffle(gp.p[pid].deck.concat(hand));gp.p[pid].hand=[];drawN(gp,pid,r.settings.startHand);gp.p[pid].mullUsed=true;log(gp,gp.p[pid].name+' mulligans.');});};
 window.playHandCard=async function(u){
   await act(r=>{const gp=r.game;const pid=S.myId;const c=CARDS[gp.inst[u].cid];
     if(gp.curIdx!==gp.order.indexOf(pid)&&c.speed!=='instant')return alert('Not your turn.');
@@ -342,6 +394,7 @@ window.playHandCard=async function(u){
       pendTarget(gp,{forId:pid,prompt:'Wield '+c.name+' to which Fighter?',filter:i=>i.kind==='fighter'&&i.owner===pid},(gp2,fUid)=>wieldWeapon(gp2,u,fUid));}
     else{spendCoins(gp,pid,c.cost||0);moveZone(gp,pid,u,'hand','grave');gp.passedSet=[];
       if(c.run)c.run(gp,{pid});else log(gp,c.name+' played \u2014 resolve manually: "'+c.text+'"');}
+    gp.p[pid].hasActed=true;
     if(!gp.pending)nextTurn(gp);});
 };
 window.startAttack=function(u){S.attackPick=u;render();};
@@ -352,6 +405,7 @@ window.confirmAttack=async function(defUid){
     if(gp.curIdx!==gp.order.indexOf(pid))return alert('Not your turn.');
     if(!canAct(gp,atkUid))return alert('That unit can\'t act again this level.');
     if(!declareAttack(gp,atkUid,defUid,pid))return alert('Not enough coins to attack.');
+    gp.p[pid].hasActed=true;
     if(!gp.pending)nextTurn(gp);});
 };
 window.useAbility=async function(u,idx){
@@ -365,7 +419,7 @@ window.useAbility=async function(u,idx){
     if(useAb.cost.tap)i.actedCount=(i.actedCount||0)+1;
     if(useAb.cost.sacrifice)destroyInstance(gp,u,{skipFortify:true});
     if(useAb.cost.selfDamage){i.hp-=useAb.cost.selfDamage;if(i.hp<=0)destroyInstance(gp,u);}
-    gp.passedSet=[];useAb.run(gp,{pid,src:u});if(!gp.pending)nextTurn(gp);});
+    gp.passedSet=[];useAb.run(gp,{pid,src:u});gp.p[pid].hasActed=true;if(!gp.pending)nextTurn(gp);});
 };
 /* THE BIG FIX: passedSet tracks who passed; only nextTurn if NOT advancing */
 window.passTurn=async function(){
@@ -387,6 +441,7 @@ window.resolvePending=async function(val){
 window.returnToLobby=async function(){await act(r=>{r.phase='lobby';r.players.forEach(p=>p.ready=false);r.game=null;});};
 window.leaveTable=function(){unsubscribeRoom();history.replaceState({},'',window.location.pathname);S.screen='home';S.code=null;S.room=null;S.myId=null;render();};
 window.toggleHelp=function(){S.helpOpen=!S.helpOpen;render();};
+window.toggleLog=function(){S.logOpen=!S.logOpen;render();};
 window.copyCode=function(){const url=window.location.origin+window.location.pathname+'?room='+S.code;try{navigator.clipboard.writeText(url);}catch(e){const t=document.createElement('textarea');t.value=url;document.body.appendChild(t);t.select();document.execCommand('copy');document.body.removeChild(t);}};
 window.showZoom=function(cid){S.zoomCid=cid;render();};
 window.closeZoom=function(){S.zoomCid=null;render();};
@@ -454,47 +509,45 @@ function playerStrip(gp,pid,isOpp){
   const isMyTurn=gp.curIdx===gp.order.indexOf(pid);
   const pct=bossHpPct(gp,pid);
   const hpLow=pct<35;
-  return`<div class="player-strip${isOpp?' opp':''}">
-    <div>
+  const isMe=pid===S.myId;
+  /* mulligan allowed only at L1, before any action */
+  const canMull=isMe&&!p.mullUsed&&gp.level===1&&!p.hasActed;
+  const pendForMe=isMe?pendingForMe(gp):null;
+  const canEndTurn=isMe&&isMyTurn&&!pendForMe&&!S.attackPick;
+  return`<div class="player-strip${isOpp?' opp':''}${isMyTurn?' active':''}">
+    <div class="ps-id">
       <div class="player-name${isMyTurn?' is-turn':''}">${p.name}${p.defeated?' &#128128;':''}</div>
-      <div class="small" style="font-size:8px;color:var(--dim)">${bName}</div>
+      <div class="ps-bossname">${bName}</div>
     </div>
     <div class="hp-bar-wrap">
       <div class="hp-label">BOSS</div>
       <div class="hp-bar"><div class="hp-fill${hpLow?' low':pct===100?' full':''}" style="width:${pct}%"></div></div>
       <div class="hp-num">${b?b.hp:'?'}/${b?b.maxHp:'?'}</div>
     </div>
-    ${!isOpp?`<div class="coin-badge">${p.coins}&#9711;</div>`:''}
-    <div class="deck-count">&#127831;${p.deck.length}</div>
-    <div class="hand-count">&#9997;${p.hand.length}</div>
-    <div class="grv-count">&#128682;${p.grave.length}</div>
-    ${isMyTurn&&!isOpp?'<div style="width:6px;height:6px;border-radius:50%;background:var(--ap);animation:tgt-pulse 1s infinite;flex-shrink:0"></div>':''}
+    <div class="ps-piles">
+      <div class="pile deck-pile" title="Deck (${p.deck.length} cards)"><span class="pile-n">${p.deck.length}</span><span class="pile-l">DECK</span></div>
+      <div class="pile grave-pile" title="Discard (${p.grave.length} cards)"><span class="pile-n">${p.grave.length}</span><span class="pile-l">DSCRD</span></div>
+      ${!isOpp?`<div class="pile hand-pile" title="Hand"><span class="pile-n">${p.hand.length}</span><span class="pile-l">HAND</span></div>`:`<div class="pile hand-pile" title="Opp. Hand"><span class="pile-n">${p.hand.length}</span><span class="pile-l">HAND</span></div>`}
+    </div>
+    ${!isOpp?`<div class="ps-coins"><span class="coin-badge">${p.coins} &#9711;</span></div>`:`<div class="ps-coins"><span class="coin-badge opp">${p.coins} &#9711;</span></div>`}
+    ${!isOpp?`<div class="ps-controls">
+      <div class="level-pill"><span class="level-pill-l">LVL</span><span class="level-pill-n">${gp.level}</span></div>
+      ${canMull?`<button class="btn ghost sm" onclick="doMulligan()" title="Redraw your starting hand (Level 1 only, before any action)">MULL</button>`:''}
+      ${canEndTurn?`<button class="btn end-turn-btn" onclick="passTurn()">END TURN</button>`:''}
+    </div>`:''}
   </div>`;
 }
 
 function renderZoom(){
   const cid=S.zoomCid;if(!cid||!CARDS[cid])return'';
-  const c=CARDS[cid];const fCol=FCOL[c.faction]||'#888';
-  const typeStr=c.type==='boss'?'BOSS':c.type==='fighter'?`FIGHTER L${c.level||'?'}`:c.type==='weapon'?`WEAPON L${c.level||'?'}`:c.type.toUpperCase()+(c.speed?' \u00b7 '+c.speed.toUpperCase():'');
-  return`<div class="zoom-overlay" onclick="closeZoom()"><div class="zoom-card" onclick="event.stopPropagation()">
-    ${artImg(cid,'zoom-art')}
-    <div class="zoom-body">
-      <div class="zoom-name" style="color:${fCol}">${c.name}</div>
-      <div class="zoom-meta">${(c.faction||'').toUpperCase()} \u00b7 ${typeStr}${c.sub?' \u00b7 '+c.sub:''}</div>
-      <div class="zoom-stats">
-        ${c.hp?`<span class="z-hp">&#10084; ${c.hp}</span>`:''}
-        ${c.atk!==undefined?`<span class="z-atk">&#9876; ${c.atk}</span>`:''}
-        ${c.atkCost!==undefined?`<span class="z-cost">ATK ${c.atkCost}&#9711;</span>`:''}
-        ${c.cost!==undefined&&c.type!=='boss'?`<span class="z-cost">COST ${c.cost}&#9711;</span>`:''}
-      </div>
-      <div class="zoom-text">${c.text||''}</div>
-      ${(c.keywords||[]).length?`<div class="zoom-kw">Keywords: ${c.keywords.join(', ')}</div>`:''}
+  const c=CARDS[cid];
+  /* Full card image only — every detail is printed on the card itself */
+  return`<div class="zoom-overlay" onclick="closeZoom()">
+    <div class="zoom-full" onclick="event.stopPropagation()">
+      ${artImg(cid,'zoom-full-img')}
+      <button class="zoom-close" onclick="closeZoom()" aria-label="Close">&#10005;</button>
     </div>
-    <div class="zoom-footer">
-      <div class="small">Right-click any card to inspect</div>
-      <button class="btn ghost sm" onclick="closeZoom()">&#10005; Close</button>
-    </div>
-  </div></div>`;
+  </div>`;
 }
 
 function renderHelp(){
@@ -622,22 +675,14 @@ function renderPlay(){
   myP.hand.forEach(u=>{h+=hCard(gp,u,myTurn,pend);});
   h+=`</div>`;
 
-  /* HUD overlay */
-  h+=`<div class="game-hud">
-    <div class="hud-pill">
-      <div><div class="hud-lbl">LEVEL</div><div class="hud-level">${gp.level}</div></div>
-    </div>
-    <div class="hud-pill" style="flex-direction:column;gap:4px;align-items:flex-end">
-      ${myTurn&&!pend?`<button class="btn sm" onclick="passTurn()">PASS TURN</button>`:''}
-      ${!myP.mullUsed?`<button class="btn ghost sm" onclick="doMulligan()">Mulligan</button>`:''}
-      <button class="btn ghost sm" onclick="toggleHelp()">Keywords</button>
-    </div>
-  </div>`;
-
-  /* Log */
-  h+=`<div class="log-panel"><div class="log-head">GAME LOG</div><div class="log-body">`;
-  (gp.log||[]).slice(-20).reverse().forEach(l=>{h+=`<div>${l}</div>`;});
-  h+=`</div></div>`;
+  /* Log (collapsible, opens via button) */
+  if(S.logOpen){
+    h+=`<div class="log-panel"><div class="log-head">GAME LOG <button class="log-x" onclick="toggleLog()">&#10005;</button></div><div class="log-body">`;
+    (gp.log||[]).slice(-30).reverse().forEach(l=>{h+=`<div>${l}</div>`;});
+    h+=`</div></div>`;
+  } else {
+    h+=`<button class="log-fab" onclick="toggleLog()" title="Show game log">&#9776;</button>`;
+  }
 
   h+='</div>';
   return h;
