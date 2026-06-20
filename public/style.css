@@ -1,309 +1,291 @@
-/* ═══ CATACLYSM ARCADE — TCG ARENA LAYOUT STYLE ═══ */
+/* ════════════════════════════════════════════════════════════
+   CATACLYSM ARCADE — TCG ARENA MASTER STYLESHEET
+════════════════════════════════════════════════════════════ */
 @import url('https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Bebas+Neue&family=Share+Tech+Mono&display=swap');
 
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{
-  --or:#FF6D23;--my:#9B59B6;--sh:#4A9EE8;--su:#76C442;--ap:#F0B429;
-  --bg:#06090c;--bg2:#0b0f14;--bg3:#111820;--cr:#E8E0D0;--dim:#5a6070;--red:#CC1100;
-  --table:#0a0e12;--border:rgba(255,109,35,.18);--glow:rgba(255,109,35,.35);
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  /* Faction Neon Colors */
+  --or: #FF6D23; --my: #9B59B6; --sh: #4A9EE8; --su: #76C442; --ap: #F0B429;
+  
+  /* Arena Environment Colors */
+  --bg-deep: #050608;
+  --bg-board: #0d1117;
+  --bg-panel: rgba(13, 17, 23, 0.85);
+  
+  /* Accents & Text */
+  --cr: #E8E0D0;
+  --dim: #6b7280;
+  --red: #ff3366;
+  --target-glow: 0 0 15px rgba(255, 51, 102, 0.8), 0 0 30px rgba(255, 51, 102, 0.4);
+  --playable-glow: 0 0 15px rgba(0, 255, 204, 0.6);
 }
-html,body{background:var(--bg);color:var(--cr);font-family:'Share Tech Mono',monospace;min-height:100vh;overflow-x:hidden}
-#app{min-height:100vh;display:flex;flex-direction:column}
-h1,h2,h3{font-family:'Black Ops One',cursive}
-button{font-family:'Share Tech Mono',monospace;cursor:pointer;border:none}
-input,select{outline:none}
 
-/* ── BUTTONS ── */
-.btn{background:var(--or);color:#000;padding:9px 18px;font-family:'Bebas Neue',cursive;font-size:14px;letter-spacing:.12em;border-radius:3px;transition:all .15s;border:none}
-.btn:hover{background:#ff8040;transform:translateY(-1px);box-shadow:0 4px 12px rgba(255,109,35,.4)}
-.btn:disabled{background:#2a2820;color:#555;cursor:not-allowed;transform:none;box-shadow:none}
-.btn.ghost{background:transparent;border:1px solid rgba(255,109,35,.45);color:var(--or)}
-.btn.ghost:hover{background:rgba(255,109,35,.12);transform:translateY(-1px)}
-.btn.sm{padding:5px 12px;font-size:11px}
-.btn.danger{background:var(--red)}
+html, body {
+  background: var(--bg-deep);
+  color: var(--cr);
+  font-family: 'Share Tech Mono', monospace;
+  height: 100vh;
+  overflow: hidden; /* Prevents scrollbars in Arena view */
+  user-select: none;
+}
 
-/* ── INPUTS ── */
-input,select{background:var(--bg2);border:1px solid rgba(255,109,35,.3);color:var(--cr);padding:9px 12px;font-family:'Share Tech Mono',monospace;font-size:13px;border-radius:3px}
-input:focus{border-color:var(--or);box-shadow:0 0 0 2px rgba(255,109,35,.15)}
+#app { height: 100vh; display: flex; flex-direction: column; }
+h1, h2, h3 { font-family: 'Black Ops One', cursive; font-weight: normal; }
+button { font-family: 'Share Tech Mono', monospace; cursor: pointer; }
+input, select { outline: none; }
 
-/* ── LAYOUT ── */
-.wrap{max-width:1320px;margin:0 auto;padding:12px 14px;width:100%;flex:1}
-.center-box{max-width:440px;margin:50px auto;background:var(--bg2);border:1px solid rgba(255,109,35,.22);padding:32px;text-align:center;border-radius:6px;box-shadow:0 8px 40px rgba(0,0,0,.5)}
-.center-box h1{font-size:38px;color:var(--cr);text-shadow:3px 3px 0 var(--red),0 0 30px rgba(255,109,35,.3);line-height:1}
-.center-box .sub{font-size:10px;color:var(--or);letter-spacing:.4em;margin:10px 0 26px;font-family:'Bebas Neue',cursive}
-.field{margin-bottom:14px;text-align:left}
-.field label{display:block;font-size:9px;color:var(--dim);letter-spacing:.18em;margin-bottom:5px}
-.field input,.field select{width:100%}
-.small{font-size:9.5px;color:var(--dim)}
+/* ── UI BUTTONS ── */
+.btn {
+  background: var(--or); color: #000; padding: 10px 20px;
+  font-family: 'Bebas Neue', cursive; font-size: 16px; letter-spacing: 0.1em;
+  border-radius: 4px; border: none;
+  transition: transform 0.15s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.15s ease;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.5);
+}
+.btn:hover { transform: translateY(-2px) scale(1.02); box-shadow: 0 6px 15px rgba(255, 109, 35, 0.4); }
+.btn:active { transform: translateY(1px); box-shadow: none; }
+.btn:disabled { background: #2a2a2a; color: #555; cursor: not-allowed; box-shadow: none; transform: none; }
+.btn.ghost { background: transparent; border: 1px solid var(--or); color: var(--or); }
+.btn.ghost:hover { background: rgba(255, 109, 35, 0.15); }
+.btn.sm { padding: 6px 12px; font-size: 13px; }
+
+/* ── LAYOUT FOUNDATIONS ── */
+.wrap { max-width: 1400px; margin: 0 auto; padding: 20px; width: 100%; flex: 1; overflow-y: auto; }
+.center-box {
+  max-width: 480px; margin: 8vh auto; background: var(--bg-panel);
+  border: 1px solid rgba(255, 255, 255, 0.1); padding: 40px;
+  border-radius: 12px; box-shadow: 0 20px 50px rgba(0,0,0,0.8);
+  backdrop-filter: blur(10px); text-align: center;
+}
+.center-box h1 { font-size: 42px; color: var(--cr); text-shadow: 0 0 20px rgba(255, 109, 35, 0.4); margin-bottom: 5px; }
+.center-box .sub { font-family: 'Bebas Neue', cursive; font-size: 14px; color: var(--or); letter-spacing: 0.3em; margin-bottom: 30px; }
+.field { margin-bottom: 20px; text-align: left; }
+.field label { display: block; font-size: 11px; color: var(--dim); letter-spacing: 0.1em; margin-bottom: 8px; }
+.field input { width: 100%; background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.2); color: #fff; padding: 12px; border-radius: 4px; font-size: 14px; transition: border-color 0.2s; }
+.field input:focus { border-color: var(--or); box-shadow: 0 0 10px rgba(255, 109, 35, 0.2); }
 
 /* ── TOPBAR ── */
-#topbar{display:flex;justify-content:space-between;align-items:center;padding:9px 16px;border-bottom:1px solid var(--border);background:rgba(6,9,12,.97);position:sticky;top:0;z-index:50;gap:10px}
-#topbar .code{color:var(--or);letter-spacing:.25em;font-size:12px;font-family:'Bebas Neue',cursive}
-
-/* ── SECTION HEADERS ── */
-.section-h{font-family:'Bebas Neue',cursive;letter-spacing:.3em;color:rgba(255,109,35,.5);font-size:11px;margin:12px 0 6px;border-bottom:1px solid rgba(255,109,35,.1);padding-bottom:4px}
-
-/* ── FACTION CHIPS ── */
-.faction-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid;padding:7px 14px;font-family:'Bebas Neue',cursive;font-size:13px;letter-spacing:.1em;cursor:pointer;user-select:none;margin:4px;border-radius:3px;transition:all .15s}
-.faction-chip.off{opacity:.28}
-.faction-chip:hover{opacity:1!important}
-.fc-synth{color:var(--or);border-color:var(--or)}.fc-synth.on{background:rgba(255,109,35,.1)}
-.fc-mystic{color:var(--my);border-color:var(--my)}.fc-mystic.on{background:rgba(155,89,182,.1)}
-.fc-shifter{color:var(--sh);border-color:var(--sh)}.fc-shifter.on{background:rgba(74,158,232,.1)}
-.fc-survivor{color:var(--su);border-color:var(--su)}.fc-survivor.on{background:rgba(118,196,66,.1)}
-.fc-apex{color:var(--ap);border-color:var(--ap)}.fc-apex.on{background:rgba(240,180,41,.1)}
+#topbar {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 20px; background: rgba(0,0,0,0.8);
+  border-bottom: 1px solid rgba(255,255,255,0.05); z-index: 100;
+  backdrop-filter: blur(5px);
+}
+#topbar .code { color: var(--or); letter-spacing: 0.2em; font-size: 14px; font-family: 'Bebas Neue', cursive; }
 
 /* ══════════════════════════════════════════════
-   TCG ARENA GAME TABLE LAYOUT
+   ARENA GAME TABLE (The Core UI Grid)
 ══════════════════════════════════════════════ */
-#game-table{
-  display:flex;flex-direction:column;
-  height:calc(100vh - 50px);
-  background:radial-gradient(ellipse at center,#0d1520 0%,var(--bg) 80%);
-  position:relative;overflow:hidden;
+#game-table {
+  display: grid;
+  /* Grid Layout: Opp Header -> Opp Board -> Player Board -> Player Header -> Player Hand */
+  grid-template-rows: auto 1fr 1fr auto auto;
+  height: calc(100vh - 45px); /* Subtract topbar height */
+  background: radial-gradient(circle at center, #131822 0%, var(--bg-deep) 100%);
+  position: relative; overflow: hidden;
 }
 
-/* Table felt line in center */
-#game-table::after{content:'';position:absolute;left:0;right:0;top:50%;height:1px;background:linear-gradient(90deg,transparent,rgba(255,109,35,.25),transparent);pointer-events:none;}
-
-/* ── PLAYER STRIP (used for both opp and self header) ── */
-.player-strip{
-  display:flex;align-items:center;gap:10px;padding:6px 12px;
-  background:rgba(11,15,20,.8);border-bottom:1px solid var(--border);
-  z-index:5;flex-shrink:0;
+/* The Midfield Line */
+#game-table::after {
+  content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+  pointer-events: none; transform: translateY(-50%); z-index: 0;
 }
-.player-strip.opp{border-bottom:none;border-top:1px solid var(--border);}
-.player-name{font-family:'Bebas Neue',cursive;font-size:14px;letter-spacing:.08em;color:var(--cr)}
-.player-name.is-turn{color:var(--ap)}
-.hp-bar-wrap{display:flex;align-items:center;gap:6px;flex:1;max-width:200px}
-.hp-label{font-size:10px;color:var(--dim);white-space:nowrap}
-.hp-bar{flex:1;height:8px;background:rgba(0,0,0,.5);border-radius:4px;overflow:hidden;border:1px solid rgba(255,255,255,.1)}
-.hp-fill{height:100%;border-radius:4px;transition:width .5s ease;background:linear-gradient(90deg,#cc1100,#76C442)}
-.hp-fill.low{background:linear-gradient(90deg,#880000,var(--red))}
-.hp-fill.full{background:linear-gradient(90deg,#5a9c20,var(--su))}
-.hp-num{font-size:11px;font-family:'Bebas Neue',cursive;color:var(--su);white-space:nowrap}
-.deck-count,.hand-count{font-size:9px;color:var(--dim);white-space:nowrap}
-.coin-badge{background:rgba(255,109,35,.12);border:1px solid rgba(255,109,35,.3);color:var(--or);padding:2px 8px;font-family:'Bebas Neue',cursive;font-size:13px;border-radius:2px}
-.grv-count{font-size:9px;color:var(--dim)}
+
+/* ── PLAYER & OPPONENT STRIPS ── */
+.player-strip {
+  display: flex; align-items: center; gap: 15px; padding: 10px 20px;
+  background: linear-gradient(90deg, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.4) 100%);
+  border-top: 1px solid rgba(255,255,255,0.05); z-index: 5;
+}
+.player-strip.opp { border-top: none; border-bottom: 1px solid rgba(255,255,255,0.05); background: linear-gradient(90deg, rgba(0,0,0,0.4) 0%, rgba(0,0,0,0.9) 100%); flex-direction: row-reverse; }
+
+.player-name { font-family: 'Bebas Neue', cursive; font-size: 18px; letter-spacing: 0.1em; color: var(--cr); }
+.player-name.is-turn { color: var(--ap); text-shadow: 0 0 10px rgba(240,180,41,0.5); }
+
+/* Health Bars */
+.hp-bar-wrap { display: flex; align-items: center; gap: 10px; flex: 1; max-width: 250px; }
+.hp-label { font-size: 11px; color: var(--dim); font-weight: bold; }
+.hp-bar { flex: 1; height: 10px; background: rgba(0,0,0,0.8); border-radius: 5px; overflow: hidden; box-shadow: inset 0 2px 4px rgba(0,0,0,0.5); }
+.hp-fill { height: 100%; border-radius: 5px; transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1); background: linear-gradient(90deg, #4caf50, #8bc34a); }
+.hp-fill.low { background: linear-gradient(90deg, #d32f2f, #f44336); box-shadow: 0 0 10px rgba(244, 67, 54, 0.5); }
+.hp-num { font-size: 14px; font-family: 'Bebas Neue', cursive; color: var(--su); min-width: 35px; text-align: right; }
+
+/* Status Badges */
+.coin-badge { background: rgba(240, 180, 41, 0.15); border: 1px solid var(--ap); color: var(--ap); padding: 4px 10px; font-family: 'Bebas Neue', cursive; font-size: 16px; border-radius: 4px; box-shadow: 0 0 8px rgba(240,180,41,0.2); }
+.deck-count, .hand-count, .grv-count { font-size: 11px; color: var(--dim); background: rgba(0,0,0,0.5); padding: 4px 8px; border-radius: 4px; }
 
 /* ── BATTLEFIELD ZONES ── */
-.battlefield{
-  flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative;
+.opp-field, .my-field {
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  padding: 10px 40px; position: relative; z-index: 1;
 }
-.opp-field,.my-field{
-  flex:1;display:flex;align-items:center;gap:8px;padding:8px 12px;
-  position:relative;min-height:0;overflow-x:auto;overflow-y:hidden;
+.opp-field { align-items: flex-end; }
+.my-field { align-items: flex-start; }
+.field-label { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-family: 'Black Ops One', cursive; font-size: 4vw; color: rgba(255,255,255,0.02); pointer-events: none; z-index: 0; }
+.empty-field { color: rgba(255,255,255,0.1); font-family: 'Bebas Neue', cursive; letter-spacing: 0.2em; font-size: 16px; z-index: 1; }
+.boss-sep { width: 2px; height: 140px; background: linear-gradient(180deg, transparent, rgba(255,255,255,0.15), transparent); margin: 0 15px; }
+
+/* ── THE HAND (Dynamic Fan Layout) ── */
+.hand-strip {
+  display: flex; justify-content: center; align-items: flex-end;
+  height: 180px; padding-bottom: 10px;
+  background: linear-gradient(0deg, rgba(0,0,0,0.8) 0%, transparent 100%);
+  position: relative; z-index: 20;
 }
-.opp-field{
-  border-bottom:2px solid rgba(255,109,35,.12);
-  background:linear-gradient(180deg,rgba(0,0,0,.3) 0%,transparent 100%);
-  flex-direction:row;align-items:flex-end;justify-content:flex-start;
+.hand-strip .hcard {
+  margin-left: -25px; /* Overlap cards like a real hand */
+  box-shadow: -5px 5px 15px rgba(0,0,0,0.6);
 }
-.my-field{
-  border-top:2px solid rgba(255,109,35,.12);
-  background:linear-gradient(0deg,rgba(0,0,0,.35) 0%,transparent 100%);
-  justify-content:flex-start;align-items:flex-start;
+.hand-strip .hcard:first-child { margin-left: 0; }
+
+/* ── CARD ARCHITECTURE (Universal Base) ── */
+.bcard, .hcard {
+  width: 120px; height: 168px; /* Strict TCG Ratio */
+  background: #1a1a1a; border-radius: 8px;
+  border: 2px solid #333; position: relative;
+  overflow: hidden; cursor: pointer;
+  display: flex; flex-direction: column; justify-content: flex-end;
+  transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.25s ease, border-color 0.25s ease, z-index 0s;
+  z-index: 2; box-shadow: 0 8px 16px rgba(0,0,0,0.8);
 }
-.field-label{
-  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
-  font-family:'Bebas Neue',cursive;font-size:11px;letter-spacing:.4em;
-  color:rgba(255,109,35,.08);pointer-events:none;user-select:none;white-space:nowrap;
+
+/* Art Layer */
+.bcard-art, .hcard-art { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
+.bcard-art-fb, .hcard-art-fb { position: absolute; inset: 0; background: #222; z-index: 1; }
+
+/* Card Info Overlays (Frosted Glass Effect) */
+.hcard-body, .bcard-strip {
+  position: relative; z-index: 3;
+  background: linear-gradient(0deg, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.7) 100%);
+  backdrop-filter: blur(4px); border-top: 1px solid rgba(255,255,255,0.15);
+  padding: 6px;
+}
+.bcard-acts { position: relative; z-index: 3; background: rgba(0,0,0,0.9); padding: 4px; display: flex; flex-direction: column; gap: 4px; }
+
+/* Typography inside cards */
+.bcard-name, .hcard-name { font-family: 'Black Ops One', cursive; font-size: 10px; color: #fff; line-height: 1.2; text-shadow: 1px 1px 2px #000; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hcard-meta, .bcard-wield { font-size: 8px; color: var(--dim); margin-top: 2px; }
+.bcard-stats { display: flex; justify-content: space-between; font-family: 'Bebas Neue', cursive; font-size: 14px; margin-top: 4px; }
+
+/* Stat Colors */
+.b-hp, .z-hp { color: var(--su); text-shadow: 0 0 5px rgba(118,196,66,0.4); }
+.b-atk, .z-atk { color: var(--or); text-shadow: 0 0 5px rgba(255,109,35,0.4); }
+
+/* Badges */
+.hcard-cost {
+  position: absolute; top: 6px; right: 6px; z-index: 4;
+  width: 26px; height: 26px; border-radius: 50%;
+  background: rgba(0,0,0,0.85); border: 2px solid var(--ap);
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Black Ops One', cursive; font-size: 12px; color: var(--ap);
+  box-shadow: 0 2px 5px rgba(0,0,0,0.8);
+}
+.hcard-level { position: absolute; top: 6px; left: 6px; z-index: 4; background: var(--or); color: #000; font-family: 'Bebas Neue', cursive; font-size: 11px; padding: 2px 6px; border-radius: 3px; box-shadow: 0 2px 4px rgba(0,0,0,0.5); }
+.hcard-instant { position: absolute; top: 6px; left: 6px; z-index: 4; background: var(--sh); color: #fff; font-family: 'Bebas Neue', cursive; font-size: 11px; padding: 2px 6px; border-radius: 3px; }
+.zone-tag { font-family: 'Bebas Neue', cursive; font-size: 10px; color: rgba(255,255,255,0.3); letter-spacing: 0.2em; text-align: center; margin-top: 6px; }
+
+/* ── GAMEPLAY PHYSICS & STATES ── */
+
+/* Playable Hand Cards */
+.hand-strip .hcard:hover {
+  transform: translateY(-40px) scale(1.2); z-index: 100;
+  border-color: #fff; box-shadow: 0 20px 40px rgba(0,0,0,0.9);
+}
+.hand-strip .hcard:not(.unplayable) { border-color: rgba(0, 255, 204, 0.4); box-shadow: var(--playable-glow); }
+.hcard.unplayable { opacity: 0.5; filter: grayscale(0.8); }
+.hcard.unplayable:hover { transform: translateY(-20px) scale(1.1); box-shadow: 0 10px 20px rgba(0,0,0,0.8); border-color: #555; }
+
+/* Board Card Interactions */
+.bcard:hover { transform: translateY(-5px) scale(1.05); z-index: 50; box-shadow: 0 15px 30px rgba(0,0,0,0.7); border-color: rgba(255,255,255,0.5); }
+.bcard.is-boss { border-width: 3px; border-color: var(--or); box-shadow: 0 0 15px rgba(255, 109, 35, 0.3); }
+.bcard.is-tapped { opacity: 0.6; filter: grayscale(0.5); transform: rotate(5deg) translateY(5px); }
+.bcard.is-tapped:hover { transform: rotate(5deg) scale(1.05) translateY(0); }
+.bcard.is-target { border-color: var(--red) !important; animation: pulse-target 1.5s infinite; cursor: crosshair; }
+
+@keyframes pulse-target {
+  0% { box-shadow: var(--target-glow); transform: scale(1.02); }
+  50% { box-shadow: 0 0 25px rgba(255, 51, 102, 1), 0 0 50px rgba(255, 51, 102, 0.6); transform: scale(1.05); }
+  100% { box-shadow: var(--target-glow); transform: scale(1.02); }
 }
 
-/* ── BOSS ZONE DIVIDERS ── */
-.boss-sep{width:1px;background:rgba(255,109,35,.15);align-self:stretch;flex-shrink:0;margin:4px 4px}
-
-/* ── ZONE LABELS ── */
-.zone-wrap{display:flex;flex-direction:column;gap:4px;align-items:center;justify-content:center;flex-shrink:0}
-.zone-tag{font-size:7px;color:rgba(255,109,35,.35);letter-spacing:.2em;font-family:'Bebas Neue',cursive;text-align:center}
-
-/* ── HAND STRIP ── */
-.hand-strip{
-  height:120px;flex-shrink:0;
-  background:rgba(6,9,12,.95);border-top:2px solid rgba(255,109,35,.2);
-  display:flex;align-items:center;padding:8px 14px;gap:6px;
-  overflow-x:auto;position:relative;z-index:10;
-  scrollbar-width:thin;scrollbar-color:rgba(255,109,35,.2) transparent;
+/* Stun Overlay */
+.bcard.is-stun::after {
+  content: 'STUNNED'; position: absolute; inset: 0; z-index: 10;
+  background: rgba(74, 158, 232, 0.6); backdrop-filter: blur(2px);
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Black Ops One', cursive; font-size: 14px; color: #fff;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.8); pointer-events: none;
 }
-.hand-strip::before{content:'HAND';position:absolute;left:8px;top:4px;font-size:7px;font-family:'Bebas Neue',cursive;color:rgba(255,109,35,.3);letter-spacing:.3em}
 
-/* ── GAME HUD OVERLAY ── */
-.game-hud{
-  position:absolute;top:8px;right:8px;z-index:20;
-  display:flex;flex-direction:column;gap:6px;align-items:flex-end;
+/* Opponent Specifics */
+.opp-field .bcard { transform: rotate(180deg); }
+.opp-field .bcard:hover { transform: rotate(180deg) translateY(-5px) scale(1.05); }
+.opp-field .bcard.is-tapped { transform: rotate(185deg) translateY(5px); }
+
+/* In-Card Buttons */
+.bcard-btn {
+  font-size: 9px; padding: 4px; border: 1px solid rgba(255,255,255,0.2);
+  color: #fff; background: rgba(255,255,255,0.1); border-radius: 2px;
+  transition: all 0.2s; text-transform: uppercase;
 }
-.hud-pill{
-  background:rgba(6,9,12,.88);border:1px solid rgba(255,109,35,.25);
-  padding:5px 10px;display:flex;align-items:center;gap:8px;border-radius:20px;
-  font-size:10px;
+.bcard-btn:hover { background: var(--ap); color: #000; border-color: var(--ap); }
+.bcard-btn.atk-btn { border-color: var(--or); color: var(--or); }
+.bcard-btn.atk-btn:hover { background: var(--or); color: #000; }
+
+/* ── ACTION BANNER & HUD ── */
+.action-bar {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  background: rgba(10, 15, 20, 0.95); border: 2px solid var(--ap);
+  padding: 15px 30px; border-radius: 8px; box-shadow: 0 10px 40px rgba(0,0,0,0.9), 0 0 20px rgba(240, 180, 41, 0.3);
+  color: #fff; font-size: 14px; text-align: center; z-index: 150;
+  backdrop-filter: blur(10px); animation: slide-in 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
-.hud-level{font-family:'Bebas Neue',cursive;font-size:20px;color:var(--or);line-height:1}
-.hud-lbl{font-size:8px;color:var(--dim);letter-spacing:.12em}
-.hud-actions{display:flex;gap:6px}
+.action-bar.atk { border-color: var(--red); box-shadow: 0 10px 40px rgba(0,0,0,0.9), 0 0 20px rgba(255, 51, 102, 0.4); }
+@keyframes slide-in { from { opacity: 0; transform: translate(-50%, -40%); } to { opacity: 1; transform: translate(-50%, -50%); } }
 
-/* ── BOARD CARD (bcard) ── */
-.bcard{
-  width:80px;flex-shrink:0;
-  background:var(--bg2);border:1.5px solid rgba(255,255,255,.1);border-radius:6px;
-  overflow:hidden;cursor:pointer;user-select:none;
-  transition:transform .12s,box-shadow .12s;
-  position:relative;
-}
-.bcard:hover{transform:translateY(-4px) scale(1.04);z-index:10;box-shadow:0 8px 20px rgba(0,0,0,.5)}
-.bcard.is-boss{border-width:2.5px;border-color:var(--or);box-shadow:0 0 12px rgba(255,109,35,.25)}
-.bcard.is-tapped{opacity:.42;transform:rotate(6deg)}
-.bcard.is-tapped:hover{transform:rotate(6deg) scale(1.04)}
-.bcard.is-target{
-  border-color:var(--ap)!important;border-width:2.5px!important;
-  box-shadow:0 0 0 3px rgba(240,180,41,.5),0 0 20px rgba(240,180,41,.4)!important;
-  animation:tgt-pulse 1s infinite;
-}
-@keyframes tgt-pulse{0%,100%{box-shadow:0 0 0 2px rgba(240,180,41,.4),0 0 12px rgba(240,180,41,.3)}50%{box-shadow:0 0 0 4px rgba(240,180,41,.6),0 0 24px rgba(240,180,41,.5)}}
-.bcard.is-stun::after{content:'STUNNED';position:absolute;inset:0;background:rgba(74,158,232,.5);display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',cursive;font-size:10px;color:#fff;pointer-events:none}
-.bcard-art{width:100%;height:58px;object-fit:cover;display:block}
-.bcard-art-fb{width:100%;height:58px;display:block}
-.bcard-strip{padding:3px 4px 5px;background:var(--bg2)}
-.bcard-name{font-family:'Black Ops One',cursive;font-size:6.5px;color:var(--cr);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px}
-.bcard-stats{display:flex;justify-content:space-between;font-size:8px;font-family:'Bebas Neue',cursive}
-.b-hp{color:var(--su)}.b-atk{color:var(--or)}
-.bcard-kw{display:flex;gap:2px;flex-wrap:wrap;margin-top:2px}
-.bdg{font-size:5.5px;background:rgba(255,109,35,.18);color:var(--or);padding:1px 3px;border-radius:1px}
-.bdg.en{background:rgba(204,17,0,.2);color:#ff7a6a}
-.bdg.st{background:rgba(74,158,232,.2);color:var(--sh)}
-.bcard-acts{display:flex;flex-direction:column;gap:2px;padding:2px 3px 3px}
-.bcard-btn{font-size:6.5px;padding:2px 3px;border:1px solid rgba(255,109,35,.3);color:var(--or);background:rgba(255,109,35,.06);cursor:pointer;width:100%;text-align:center;border-radius:2px;font-family:'Share Tech Mono',monospace;transition:background .1s}
-.bcard-btn:hover{background:rgba(255,109,35,.22)}
-.bcard-btn.atk-btn{border-color:rgba(204,17,0,.4);color:#ff8070;background:rgba(204,17,0,.1)}
-.bcard-btn.atk-btn:hover{background:rgba(204,17,0,.25)}
-.bcard-btn.ab-btn{font-size:6px;color:var(--ap);border-color:rgba(240,180,41,.25);background:rgba(240,180,41,.04)}
-.bcard-wield{font-size:5.5px;color:var(--sh);padding:0 4px 2px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.action-opts { display: flex; justify-content: center; gap: 10px; margin-top: 15px; }
+.action-opt { background: rgba(255,255,255,0.1); border: 1px solid var(--ap); padding: 8px 16px; color: var(--ap); border-radius: 4px; font-family: 'Bebas Neue', cursive; font-size: 16px; letter-spacing: 0.1em; transition: all 0.2s; }
+.action-opt:hover { background: var(--ap); color: #000; transform: scale(1.05); }
 
-/* Opp card — flipped look */
-.opp-field .bcard{transform:rotate(180deg)}
-.opp-field .bcard:hover{transform:rotate(180deg) translateY(-4px) scale(1.04)}
-.opp-field .bcard.is-tapped{transform:rotate(186deg);opacity:.42}
-.opp-field .bcard.is-target{transform:rotate(180deg)}
-.opp-field .bcard.is-target:hover{transform:rotate(180deg) translateY(-4px) scale(1.04)}
+.game-hud { position: absolute; right: 20px; top: 50%; transform: translateY(-50%); z-index: 90; display: flex; flex-direction: column; gap: 10px; }
+.hud-pill { background: rgba(0,0,0,0.8); border: 1px solid rgba(255,255,255,0.1); padding: 15px; border-radius: 8px; text-align: center; backdrop-filter: blur(5px); }
+.hud-lbl { font-family: 'Bebas Neue', cursive; font-size: 14px; color: var(--dim); letter-spacing: 0.2em; }
+.hud-level { font-family: 'Black Ops One', cursive; font-size: 32px; color: var(--ap); text-shadow: 0 0 10px rgba(240,180,41,0.5); }
 
-/* ── HAND CARD (hcard) ── */
-.hcard{
-  width:78px;height:104px;flex-shrink:0;
-  background:var(--bg2);border:1.5px solid rgba(255,109,35,.3);border-radius:5px;
-  overflow:hidden;cursor:pointer;user-select:none;
-  transition:transform .15s,box-shadow .15s;position:relative;
-}
-.hcard:hover{transform:translateY(-18px);z-index:20;box-shadow:0 12px 30px rgba(0,0,0,.7),0 0 0 2px var(--or)}
-.hcard.unplayable{opacity:.35;cursor:not-allowed;filter:grayscale(.4)}
-.hcard.unplayable:hover{transform:none;box-shadow:none}
-.hcard-art{width:100%;height:58px;object-fit:cover;display:block}
-.hcard-art-fb{width:100%;height:58px;display:block}
-.hcard-body{padding:3px 4px 0}
-.hcard-name{font-family:'Black Ops One',cursive;font-size:6.5px;color:var(--cr);line-height:1.2;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
-.hcard-meta{font-size:6px;color:var(--dim);margin-top:1px}
-.hcard-cost{position:absolute;bottom:4px;right:4px;width:16px;height:16px;border-radius:50%;background:rgba(8,6,4,.85);border:1.5px solid var(--or);display:flex;align-items:center;justify-content:center;font-size:9px;font-family:'Bebas Neue',cursive;color:var(--or);font-weight:bold}
-.hcard-level{position:absolute;top:3px;left:3px;background:rgba(0,0,0,.75);border-radius:2px;padding:1px 3px;font-size:6px;font-family:'Bebas Neue',cursive;color:var(--ap)}
-.hcard-instant{position:absolute;top:3px;right:3px;background:rgba(74,158,232,.8);border-radius:2px;padding:1px 3px;font-size:6px;font-family:'Bebas Neue',cursive;color:#fff}
+.log-panel { position: absolute; left: 20px; bottom: 200px; width: 250px; background: rgba(0,0,0,0.7); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; z-index: 10; backdrop-filter: blur(5px); }
+.log-head { padding: 8px 12px; font-family: 'Bebas Neue', cursive; font-size: 14px; color: var(--or); border-bottom: 1px solid rgba(255,255,255,0.05); letter-spacing: 0.1em; }
+.log-body { max-height: 150px; overflow-y: auto; padding: 10px 12px; font-size: 11px; color: #aaa; line-height: 1.5; }
 
-/* ── PENDING / ACTION BANNERS ── */
-.action-bar{
-  background:rgba(240,180,41,.1);border-top:2px solid rgba(240,180,41,.5);border-bottom:1px solid rgba(240,180,41,.2);
-  padding:8px 14px;display:flex;align-items:center;gap:10px;flex-shrink:0;
-  color:var(--ap);font-size:11px;flex-wrap:wrap;
-  animation:ab-pulse 2s infinite;z-index:15;
-}
-@keyframes ab-pulse{0%,100%{border-top-color:rgba(240,180,41,.4)}50%{border-top-color:rgba(240,180,41,.8)}}
-.action-bar.atk{background:rgba(204,17,0,.1);border-top-color:rgba(204,17,0,.6);color:#ff8070;animation:atk-pulse 1.5s infinite}
-@keyframes atk-pulse{0%,100%{border-top-color:rgba(204,17,0,.4)}50%{border-top-color:rgba(204,17,0,.9)}}
-.action-opts{display:flex;gap:6px;flex-wrap:wrap}
-.action-opt{padding:4px 10px;background:rgba(240,180,41,.08);border:1px solid rgba(240,180,41,.4);color:var(--ap);font-size:10px;cursor:pointer;border-radius:3px;font-family:'Share Tech Mono',monospace}
-.action-opt:hover{background:rgba(240,180,41,.2)}
+/* ── MODALS (Zoom & Winner) ── */
+.zoom-overlay, .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+.zoom-card { width: 320px; background: #111; border: 2px solid var(--or); border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,0.8), 0 0 30px rgba(255, 109, 35, 0.3); overflow: hidden; animation: pop-in 0.2s cubic-bezier(0.2, 0.8, 0.2, 1); }
+@keyframes pop-in { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.zoom-art { width: 100%; height: 260px; object-fit: cover; border-bottom: 2px solid rgba(255,255,255,0.1); }
+.zoom-body { padding: 20px; }
+.zoom-name { font-family: 'Black Ops One', cursive; font-size: 24px; color: #fff; margin-bottom: 5px; }
+.zoom-meta { font-family: 'Bebas Neue', cursive; font-size: 14px; letter-spacing: 0.1em; color: var(--dim); margin-bottom: 15px; }
+.zoom-stats { display: flex; gap: 15px; font-family: 'Bebas Neue', cursive; font-size: 18px; padding: 10px 0; border-top: 1px solid rgba(255,255,255,0.1); border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 15px; }
+.zoom-text { font-size: 13px; color: #ccc; line-height: 1.6; }
+.zoom-footer { padding: 15px 20px; background: rgba(0,0,0,0.5); display: flex; justify-content: space-between; align-items: center; }
 
-/* ── ZOOM MODAL ── */
-.zoom-overlay{position:fixed;inset:0;background:rgba(0,0,0,.9);display:flex;align-items:center;justify-content:center;z-index:200;padding:20px}
-.zoom-card{width:280px;max-width:92vw;background:var(--bg2);border:2px solid var(--or);border-radius:8px;overflow:hidden;box-shadow:0 0 60px rgba(255,109,35,.2)}
-.zoom-art{width:100%;height:200px;object-fit:cover;display:block}
-.zoom-art-fb{width:100%;height:200px;display:block}
-.zoom-body{padding:14px 16px}
-.zoom-name{font-family:'Black Ops One',cursive;font-size:16px;margin-bottom:3px}
-.zoom-meta{font-size:9px;letter-spacing:.15em;margin-bottom:8px;color:var(--or)}
-.zoom-stats{display:flex;gap:14px;font-size:11px;padding:6px 0;border-top:1px solid rgba(255,109,35,.15);border-bottom:1px solid rgba(255,109,35,.15);margin-bottom:10px}
-.z-hp{color:var(--su)}.z-atk{color:var(--or)}.z-cost{color:var(--dim)}
-.zoom-text{font-size:10px;color:rgba(232,224,208,.82);line-height:1.75}
-.zoom-kw{font-size:8.5px;color:var(--ap);margin-top:8px;padding-top:6px;border-top:1px solid rgba(255,109,35,.1)}
-.zoom-footer{padding:10px 16px 14px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.winner-screen { position: absolute; inset: 0; background: rgba(0,0,0,0.9); z-index: 500; display: flex; flex-direction: column; align-items: center; justify-content: center; backdrop-filter: blur(10px); }
+.winner-screen h1 { font-size: 80px; color: var(--ap); text-shadow: 0 0 40px rgba(240, 180, 41, 0.8); margin-bottom: 10px; }
+.winner-sub { font-family: 'Bebas Neue', cursive; font-size: 20px; letter-spacing: 0.3em; color: var(--cr); margin-bottom: 40px; }
 
-/* ── LOG PANEL ── */
-.log-panel{
-  position:absolute;bottom:130px;right:8px;width:200px;
-  background:rgba(6,9,12,.9);border:1px solid rgba(255,255,255,.07);
-  border-radius:4px;overflow:hidden;z-index:15;
-}
-.log-head{padding:4px 8px;font-size:8px;letter-spacing:.2em;color:var(--dim);font-family:'Bebas Neue',cursive;border-bottom:1px solid rgba(255,255,255,.06)}
-.log-body{max-height:100px;overflow-y:auto;padding:4px 8px;font-size:8.5px;color:rgba(232,224,208,.45);line-height:1.65;scrollbar-width:thin}
-.log-body div{padding:1px 0}
+/* ── DECK BUILDER / LOBBY RESPONSIVENESS ── */
+.boss-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px; }
+.deck-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; max-height: 60vh; overflow-y: auto; padding-right: 10px; }
+.dcard2 { display: flex; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; overflow: hidden; transition: border-color 0.2s, background 0.2s; }
+.dcard2:hover { border-color: var(--or); background: rgba(255,109,35,0.05); }
 
-/* ── LOBBY ── */
-.player-row{display:flex;justify-content:space-between;align-items:center;padding:9px 14px;background:var(--bg2);margin-bottom:6px;border-left:3px solid var(--or);border-radius:0 3px 3px 0}
-.copyrow{display:flex;gap:8px;align-items:center;justify-content:center;margin-top:10px}
-.codebox{font-family:'Black Ops One',cursive;font-size:28px;letter-spacing:.2em;color:var(--ap);background:var(--bg2);padding:10px 20px;border:1px solid var(--ap);border-radius:3px}
-.invite-url{font-size:9px;color:var(--dim);margin-top:6px;word-break:break-all}
-
-/* ── DECK BUILDER ── */
-.build-summary{position:sticky;top:50px;z-index:10;background:rgba(255,109,35,.06);border:1px solid rgba(255,109,35,.22);padding:10px 14px;margin-bottom:10px;font-size:11px;border-radius:4px;backdrop-filter:blur(4px)}
-.progress-bar{height:4px;background:rgba(255,109,35,.1);margin-top:6px;border-radius:2px;overflow:hidden}
-.progress-fill{height:100%;background:linear-gradient(90deg,var(--or),#ffaa60);border-radius:2px;transition:width .3s}
-.boss-pick{display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:10px;margin-bottom:14px}
-.boss2{background:var(--bg2);border:2px solid rgba(255,109,35,.12);border-radius:6px;overflow:hidden;cursor:pointer;transition:all .15s}
-.boss2:hover{border-color:rgba(255,109,35,.45);transform:translateY(-2px)}
-.boss2.sel{border-color:var(--or);box-shadow:0 0 24px rgba(255,109,35,.3)}
-.boss2-art{width:100%;height:110px;object-fit:cover;display:block}
-.boss2-art-fb{width:100%;height:110px;display:block}
-.boss2-body{padding:8px 10px}
-.boss2-name{font-family:'Black Ops One',cursive;font-size:12px;color:var(--cr);margin-bottom:4px;line-height:1.2}
-.boss2-stats{display:flex;gap:8px;font-size:9px;margin-bottom:4px}
-.b2hp{color:var(--su)}.b2atk{color:var(--or)}.b2cost{color:var(--dim)}
-.boss2-text{font-size:8.5px;color:rgba(232,224,208,.5);line-height:1.5}
-.deck-grid{display:flex;flex-direction:column;gap:5px;max-height:540px;overflow-y:auto;padding:2px;scrollbar-width:thin;scrollbar-color:rgba(255,109,35,.2) transparent}
-.dcard2{display:flex;background:var(--bg2);border:1px solid rgba(255,255,255,.07);border-radius:4px;overflow:hidden;position:relative;transition:border-color .12s}
-.dcard2:hover{border-color:rgba(255,109,35,.3)}
-.dcard2-art-wrap{width:76px;flex-shrink:0;position:relative}
-.dcard2-art{width:76px;height:100%;object-fit:cover;display:block;min-height:86px}
-.dcard2-art-fb{width:76px;min-height:86px;display:block}
-.dcard2-ftag{position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.78);font-size:6px;letter-spacing:.15em;text-align:center;padding:2px;font-family:'Bebas Neue',cursive}
-.dcard2-info{flex:1;padding:8px 10px 6px;min-width:0}
-.dcard2-name{font-family:'Black Ops One',cursive;font-size:11px;color:var(--cr);margin-bottom:2px}
-.dcard2-meta{font-size:8.5px;color:var(--dim);margin-bottom:4px}
-.dcard2-text{font-size:8px;color:rgba(232,224,208,.48);line-height:1.5;margin-bottom:6px}
-.dcard2-ibtn{position:absolute;top:4px;right:4px;background:rgba(0,0,0,.65);border:1px solid rgba(255,109,35,.35);color:var(--or);font-size:9px;padding:2px 6px;cursor:pointer;border-radius:2px}
-.dcard2-ibtn:hover{background:rgba(255,109,35,.18)}
-.qty-ctl{display:flex;align-items:center;gap:8px}
-.qty-ctl button{width:24px;height:24px;background:rgba(255,109,35,.1);border:1px solid var(--or);color:var(--or);font-size:15px;display:flex;align-items:center;justify-content:center;border-radius:2px}
-.qty-ctl button:hover{background:rgba(255,109,35,.28)}
-.qty-ctl .n{min-width:18px;text-align:center;color:var(--or);font-weight:bold;font-size:13px}
-.qty-ctl .n.has{color:#fff}
-
-/* ── WINNER ── */
-.winner-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:20px}
-.winner-screen h1{font-size:52px;color:var(--ap);text-shadow:4px 4px 0 var(--red),0 0 50px rgba(240,180,41,.5)}
-.winner-sub{font-family:'Bebas Neue',cursive;letter-spacing:.4em;font-size:14px;color:var(--dim)}
-
-/* ── HELP MODAL ── */
-.overlay{position:fixed;inset:0;background:rgba(0,0,0,.82);display:flex;align-items:center;justify-content:center;z-index:100;padding:20px}
-.modal{background:var(--bg);border:2px solid var(--or);padding:24px;max-width:500px;width:100%;max-height:85vh;overflow-y:auto;border-radius:4px}
-.modal h3{color:var(--or);font-family:'Black Ops One',cursive;font-size:16px;margin-bottom:14px}
-.kw-entry{margin-bottom:10px;padding-left:10px;border-left:2px solid rgba(255,109,35,.3)}
-.kw-entry b{color:var(--or)}
-.kw-entry p{font-size:10px;color:rgba(232,224,208,.7);line-height:1.7}
-
-/* ── MISC ── */
-.empty-field{display:flex;align-items:center;justify-content:center;flex:1;min-height:80px;color:rgba(255,109,35,.1);font-size:10px;letter-spacing:.3em;pointer-events:none;font-family:'Bebas Neue',cursive}
-
-/* ── MOBILE ── */
-@media(max-width:640px){
-  .bcard{width:64px}.bcard-art,.bcard-art-fb{height:44px}
-  .hcard{width:64px;height:90px}.hcard-art,.hcard-art-fb{height:46px}
-  .log-panel{width:150px}
-  .boss-pick{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
-  .boss2-art,.boss2-art-fb{height:85px}
-  .hand-strip{height:100px}
+/* ── RESPONSIVE TWEAKS ── */
+@media(max-width: 900px) {
+  .bcard, .hcard { width: 90px; height: 126px; }
+  .hand-strip { height: 140px; }
+  .field-label { font-size: 6vw; }
+  .game-hud { right: 10px; top: auto; bottom: 200px; }
+  .log-panel { display: none; /* Hide log on small screens to save space */ }
 }
