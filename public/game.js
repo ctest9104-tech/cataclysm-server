@@ -1,4 +1,4 @@
-/* CATACLYSM ARCADE — ONLINE TCG All factions */
+/* CATACLYSM ARCADE — ONLINE TCG v2.5 | Fixed levels | Card images | All factions */
 const SUPABASE_URL='https://mhvtcztuusjuzdjamnfo.supabase.co';
 const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1odnRjenR1dXNqdXpkamFtbmZvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4MzE1MDUsImV4cCI6MjA5NzQwNzUwNX0.b7fq9uditGv3rabTvYeAyGxJxhSAmoVK0TpyfuRBass';
 let _db=null;
@@ -99,6 +99,11 @@ function ingestCard(o){
   /* Can't be blocked */
   if(/can.t be blocked/i.test(text)){ c.atkFlags=c.atkFlags||{}; c.atkFlags.unblockable=true; }
 
+  /* Special per-card flags */
+  if(o.id==='render-mq83vajo')c.diesEndOfLevel=true;  /* Whump! token */
+  if(o.id==='render-mq838ccz')c.createsTempToken=true;  /* Mimeoscoped tactic */
+  if(o.id==='render-mq83cnop')c.armor=Math.max(c.armor||0,1);  /* Notamotua Armor 1 — text scan may miss */
+
   CARDS[c.id]=c;
 }
 
@@ -114,7 +119,171 @@ function loadCardDatabase(){
   }
   if(arr&&arr.length){arr.forEach(ingestCard);console.log('Cataclysm: loaded '+Object.keys(CARDS).length+' cards.');}
   else{console.warn('Cataclysm: no card database found. Open card-studio.html to build it, or add cards-data.js.');}
+  applyAbilities();
 }
+
+/* Attach per-card behaviors from window.CATA_ABILITIES into the CARDS registry.
+   ABILITIES is keyed by card id; each entry can have any of:
+     run(gp,ctx)        — tactic/response on play
+     onEnter(gp,ctx)    — fighter enters play
+     onDeath(gp,ctx)    — unit dies
+     onAttack(gp,ctx)   — unit declares attack
+     onWield(gp,ctx)    — weapon becomes wielded
+     activated:[...]    — activated abilities visible as buttons
+     dynamicAtk(gp,uid) — variable Attack
+     dynamicAtkBonus(gp,uid) — extra atk added on top of base
+     staticBuff(gp,uid) — re-evaluated each instSummary; should return number for atk bonus to allies
+     atkFlags, fortifyInstead, determination, canPhantasmal, armor — passive flags */
+function applyAbilities(){
+  const A=(typeof window!=='undefined'&&window.CATA_ABILITIES)||{};
+  let attached=0;
+  Object.keys(A).forEach(id=>{
+    if(!CARDS[id])return;
+    Object.assign(CARDS[id],A[id]);
+    CARDS[id]._auto=true;attached++;
+  });
+  console.log('Cataclysm: '+attached+'/'+Object.keys(CARDS).length+' cards have automated abilities.');
+}
+
+/* Helpers used by ability definitions */
+function gainKwLevel(gp,uid,kw){const i=gp.inst[uid];if(!i)return;i._gainedKw=i._gainedKw||{};i._gainedKw[kw]=gp.level;log(gp,(CARDS[i.cid]||{}).name+' gains '+kw+' this level.');}
+function hasGainedKw(gp,uid,kw){const i=gp.inst[uid];if(!i)return false;return i._gainedKw&&i._gainedKw[kw]===gp.level;}
+function unwieldWeapon(gp,wUid){const w=gp.inst[wUid];if(!w||!w.wieldedBy)return;const holder=gp.inst[w.wieldedBy];if(holder)holder.wielded=(holder.wielded||[]).filter(x=>x!==wUid);w.wieldedBy=null;}
+function eachOpponent(gp,myPid,cb){gp.order.forEach(pid=>{if(pid!==myPid&&!gp.p[pid].defeated)cb(pid);});}
+function eachAlly(gp,pid,cb){gp.p[pid].board.concat([gp.p[pid].boss]).forEach(u=>{if(u&&gp.inst[u])cb(u);});}
+function myFighters(gp,pid){return gp.p[pid].board.filter(u=>gp.inst[u]&&gp.inst[u].kind==='fighter'&&gp.inst[u].hp>0);}
+function allyAndOppUnits(gp){return allBoard(gp).filter(u=>gp.inst[u]&&gp.inst[u].hp>0);}
+function fighterTargetFilter(){return i=>i.kind==='fighter';}
+function bossOrFighterFilter(){return i=>i.kind==='fighter'||i.kind==='boss';}
+function opposingFighterFilter(pid){return i=>i.kind==='fighter'&&i.owner!==pid;}
+function setTempAtk(gp,uid,amt){const i=gp.inst[uid];if(!i)return;i.tempAtk=(i.tempAtk||0)+amt;log(gp,(CARDS[i.cid]||{}).name+' gets +'+amt+' Attack this level.');}
+function stopAttack(gp){if(gp.pendingAttack){log(gp,'Attack stopped!');gp.pendingAttack=null;}}
+function rollDie(n){return 1+Math.floor(Math.random()*(n||6));}
+
+/* Visible dice roll — animated die that displays a tumbling result, then calls cb(result).
+   Used by Lacey/Sage automatically; also available via GM "Roll Die" button. */
+function rollDieVisible(sides,reason,cb){
+  sides=sides||6;
+  if(typeof document==='undefined'||typeof window==='undefined'){cb&&cb(rollDie(sides));return;}
+  const result=rollDie(sides);
+  const ov=document.createElement('div');ov.className='fx-dice-overlay';
+  const die=document.createElement('div');die.className='fx-die';die.textContent='?';
+  const lbl=document.createElement('div');lbl.className='fx-die-lbl';lbl.textContent=reason||'Rolling d'+sides+'...';
+  ov.appendChild(die);ov.appendChild(lbl);document.body.appendChild(ov);
+  let frame=0;const iv=setInterval(()=>{die.textContent=1+Math.floor(Math.random()*sides);frame++;if(frame>=14){clearInterval(iv);die.textContent=result;die.classList.add('fx-die-settled');lbl.textContent=(reason?reason+' \u2014 ':'')+'rolled '+result;setTimeout(()=>{ov.remove();cb&&cb(result);},900);}},70);
+}
+
+function transformInstance(gp,uid,maxLevel,opts){
+  const i=gp.inst[uid];if(!i)return;const pid=i.owner;const oldName=(CARDS[i.cid]||{}).name;
+  destroyInstance(gp,uid,{skipFortify:true});
+  const deck=gp.p[pid].deck;const skipped=[];let found=null;
+  while(deck.length){
+    const u=deck.shift();const c=CARDS[gp.inst[u].cid];
+    if(c&&c.type==='fighter'&&(c.level||1)<=maxLevel&&c.name!==oldName){found=u;break;}
+    skipped.push(u);
+  }
+  gp.p[pid].deck=shuffle(deck.concat(skipped));
+  if(found){gp.p[pid].board.push(found);resetInstance(gp,found);fireOnEnter(gp,found,pid);log(gp,'Transform \u2192 '+CARDS[gp.inst[found].cid].name+'.');}
+  else log(gp,'Transform: no eligible Fighter found.');
+}
+function unstunUnit(gp,uid){const i=gp.inst[uid];if(!i)return;i.stunned=false;log(gp,(CARDS[i.cid]||{}).name+' unstunned.');}
+function untapUnit(gp,uid){const i=gp.inst[uid];if(!i)return;i.actedCount=0;log(gp,(CARDS[i.cid]||{}).name+' untapped.');}
+function revealTopN(gp,pid,n){return gp.p[pid].deck.slice(0,n);}
+function bottomShuffle(gp,pid,uids){gp.p[pid].deck=gp.p[pid].deck.filter(x=>!uids.includes(x)).concat(shuffle(uids));}
+
+/* ─── Linked-fighter storage (Charlotte) ───
+   When Charlotte kills, the dead Fighter is removed from grave and tucked under Charlotte.
+   When Charlotte dies, linked Fighters return to play under their original owner. */
+function linkFighter(gp,charlotteUid,deadUid){
+  const ch=gp.inst[charlotteUid];if(!ch)return;
+  ch.linkedFighters=ch.linkedFighters||[];
+  /* Pull the dead Fighter out of its owner's grave so it's truly "removed from play" */
+  const dead=gp.inst[deadUid];if(!dead)return;
+  const ownerGrave=gp.p[dead.owner].grave;
+  const idx=ownerGrave.indexOf(deadUid);if(idx>=0)ownerGrave.splice(idx,1);
+  ch.linkedFighters.push({uid:deadUid,owner:dead.owner,cid:dead.cid});
+  log(gp,CARDS[dead.cid].name+' is linked to Charlotte (removed from play).');
+}
+function returnLinkedFighters(gp,charlotteUid){
+  const ch=gp.inst[charlotteUid];if(!ch||!ch.linkedFighters||!ch.linkedFighters.length)return;
+  ch.linkedFighters.forEach(link=>{
+    if(gp.inst[link.uid]){
+      /* Already exists somewhere; just push back to owner's board */
+      gp.p[link.owner].board.push(link.uid);
+      resetInstance(gp,link.uid);
+      log(gp,CARDS[link.cid].name+' returns to play.');
+    }
+  });
+  ch.linkedFighters=[];
+}
+
+/* ─── Stat / Mimeoscoped copy helpers ─── */
+function copyStatsOnto(gp,srcUid,modelUid){
+  const sI=gp.inst[srcUid];const mI=gp.inst[modelUid];if(!sI||!mI)return;
+  const mC=CARDS[mI.cid];if(!mC)return;
+  sI._copyOf=mI.cid;sI.maxHp=mI.maxHp;sI.hp=mI.maxHp;
+  sI.counters=Object.assign({},mI.counters||{});
+  log(gp,(CARDS[sI.cid]||{}).name+' enters as a copy of '+mC.name+' (HP '+sI.hp+', stats inherited).');
+}
+
+/* ─── Diffin attack restriction ─── */
+function diffinCanAttack(gp,uid){
+  const i=gp.inst[uid];if(!i)return true;
+  const c=CARDS[i.cid];if(!c||c.id!=='render-mq82up5x')return true; /* not Diffin */
+  return myFighters(gp,i.owner).some(u=>gp.inst[u].hp>=5);
+}
+
+window.rollDieManual=function(sides){
+  sides=sides||6;
+  rollDieVisible(sides,'Manual roll (d'+sides+')',(r)=>{
+    if(S.room&&S.room.game){
+      act(rm=>{const myName=(rm.game.p[S.myId]&&rm.game.p[S.myId].name)||'Player';log(rm.game,'[Die] '+myName+' rolled '+r+' on a d'+sides+'.');});
+    }
+  });
+};
+
+/* Cross-trigger: any discard fires onAnyDiscard on every board unit whose card defines it. */
+function fireDiscardHooks(gp,discarderPid,uids){
+  if(!uids||!uids.length)return;
+  allBoard(gp).forEach(u=>{const i=gp.inst[u];if(!i)return;const c=CARDS[i.cid];if(c&&c.onAnyDiscard)c.onAnyDiscard(gp,u,discarderPid,uids);});
+}
+
+/* Cost modifier — adjust an attack/ability cost by board state. */
+function effectiveCost(gp,pid,baseCost,kind){
+  let cost=baseCost||0;
+  /* Trouble, Forerunner: other players' atks & activations cost ① more */
+  allBoard(gp).forEach(u=>{const i=gp.inst[u];if(!i||i.hp<=0)return;if(i.cid==='render-mq83senr'&&i.owner!==pid)cost+=1;});
+  /* Dreyver, Terminarch: other Synth allies pay ① less */
+  if(kind==='atk'||kind==='ability'){
+    const myDreyver=gp.p[pid].board.concat([gp.p[pid].boss]).some(u=>u&&gp.inst[u]&&gp.inst[u].cid==='render-mq82vipj');
+    if(myDreyver){cost-=1;}
+  }
+  /* EVee: other Survivors pay ① less to attack */
+  if(kind==='atk'){
+    const myEvee=gp.p[pid].board.some(u=>u&&gp.inst[u]&&gp.inst[u].cid==='render-mq82xys2');
+    if(myEvee){cost-=1;}
+  }
+  return Math.max(0,cost);
+}
+
+/* Untargetability filter — return true if uid can't currently be attacked. */
+function isUntargetable(gp,uid,attackerPid){
+  const i=gp.inst[uid];if(!i)return false;const c=CARDS[i.cid];if(!c)return false;
+  /* Stealthy on the level it entered (existing rule handled by validDefenders) */
+  /* Seeya, Later Gator — can't be attacked if 5+ Fighters on your team */
+  if(c.id==='render-mq83jdnu'&&myFighters(gp,i.owner).length>=5)return true;
+  /* Zanni, Nobody's Fool — can't be attacked, period */
+  if(c.id==='render-mq83wcyl')return true;
+  /* Flank, Packleader — can't be attacked if 4+ Fighters on team */
+  if(c.id==='render-mq82yz0l'&&myFighters(gp,i.owner).length>=4)return true;
+  /* Tantrum + Whump! on same team */
+  if(c.id==='render-mq83ph11'){
+    const hasWhump=gp.p[i.owner].board.some(u=>(CARDS[gp.inst[u].cid]||{}).name==='Whump!');
+    if(hasWhump)return true;
+  }
+  return false;
+}
+
 loadCardDatabase();
 
 /* Image element from a card's own img filename */
@@ -157,14 +326,38 @@ function instSummary(gp,uid){
   const i=gp.inst[uid];if(!i)return null;const c=CARDS[i.cid];if(!c)return null;
   let atk=0;
   if(i.kind==='fighter'||i.kind==='boss'){
-    atk=(c.atk||0)+(i.counters&&i.counters.atk||0)+(i.tempAtk||0);
+    /* dynamicAtk fully overrides base atk (Stat copy / Slider faction-count / Muck) */
+    if(c.dynamicAtk){
+      const dv=c.dynamicAtk(gp,uid);
+      if(dv!==undefined&&dv!==null)atk=dv+(i.counters&&i.counters.atk||0)+(i.tempAtk||0);
+      else atk=(c.atk||0)+(i.counters&&i.counters.atk||0)+(i.tempAtk||0);
+    } else {
+      atk=(c.atk||0)+(i.counters&&i.counters.atk||0)+(i.tempAtk||0);
+    }
     if(c.dynamicAtkBonus)atk+=c.dynamicAtkBonus(gp,uid);
-    (i.wielded||[]).forEach(wu=>{atk+=weaponAtk(gp,wu);});
+    (i.wielded||[]).forEach(wu=>{
+      const wc=CARDS[gp.inst[wu].cid];
+      atk+=weaponAtk(gp,wu);
+      /* Weapon wielder bonus (Mayhem Fist) */
+      if(wc&&wc.atkBonusForWielder)atk+=(wc.atkBonusForWielder(gp,uid)||0);
+    });
+    /* Ally static buffs: any ally with a staticBuff(gp,this) function adds to my attack */
+    if(i.owner&&gp.p[i.owner]){
+      (gp.p[i.owner].board.concat([gp.p[i.owner].boss])).forEach(au=>{
+        if(!au||au===uid)return;const ai=gp.inst[au];if(!ai)return;const ac=CARDS[ai.cid];
+        if(ac&&ac.staticBuff)atk+=(ac.staticBuff(gp,uid,au)||0);
+      });
+    }
   }
-  const maxActs=(i.agilityLevel||c.grantsKeyword==='agility'||hasWieldedAgility(gp,uid))?2:1;
+  /* Effective keywords include those granted this-level via gainKwLevel */
+  const gained=(i._gainedKw&&Object.keys(i._gainedKw).filter(k=>i._gainedKw[k]===gp.level))||[];
+  const allKw=(c.keywords||[]).slice();
+  gained.forEach(k=>{if(!allKw.includes(k))allKw.push(k);});
+  const hasAgility=allKw.includes('Agility')||c.grantsKeyword==='agility'||hasWieldedAgility(gp,uid);
+  const maxActs=(i.agilityLevel||hasAgility)?2:1;
   return{uid,cid:i.cid,name:c.name,faction:c.faction,kind:i.kind,hp:i.hp,maxHp:i.maxHp,
     atk:Math.max(0,atk),tapped:(i.actedCount||0)>=maxActs,
-    keywords:(c.keywords||[]).concat(i.stunned?['Stunned']:[]).concat(i.phantasmal?['Phantasmal']:[]),
+    keywords:allKw.concat(i.stunned?['Stunned']:[]).concat(i.phantasmal?['Phantasmal']:[]),
     enterLevel:i.enterLevel,dead:i.hp<=0};
 }
 function resetInstance(gp,uid){
@@ -193,7 +386,7 @@ function moveZone(gp,pid,u,from,to){
 }
 function drawN(gp,pid,n){for(let i=0;i<n;i++){const d=gp.p[pid].deck;if(!d.length)continue;gp.p[pid].hand.push(d.shift());}}
 function spendCoins(gp,pid,n){if(gp.p[pid].coins<n)return false;gp.p[pid].coins-=n;return true;}
-function healInst(gp,uid,amt){const i=gp.inst[uid];if(!i)return;const c=CARDS[i.cid];if(!c)return;i.hp=Math.min(i.maxHp,i.hp+amt);log(gp,c.name+' heals '+amt+'.');}
+function healInst(gp,uid,amt){const i=gp.inst[uid];if(!i)return;const c=CARDS[i.cid];if(!c)return;const before=i.hp;i.hp=Math.min(i.maxHp,i.hp+amt);const real=i.hp-before;if(real>0){log(gp,c.name+' heals '+real+'.');showDamageNumber(uid,real,'heal');}}
 function addCounter(gp,uid,type,amt){
   const i=gp.inst[uid];if(!i)return;const c=CARDS[i.cid];
   i.counters=i.counters||{};i.counters[type]=(i.counters[type]||0)+amt;
@@ -208,7 +401,33 @@ function wieldWeapon(gp,wUid,fUid){
   const owner=w.owner;if(gp.p[owner]&&gp.p[owner].boss&&gp.inst[gp.p[owner].boss]&&gp.inst[gp.p[owner].boss].cid==='toolshed')CARDS.toolshed.onWeaponEnter(gp,{pid:owner});
   log(gp,CARDS[w.cid].name+' wielded to '+CARDS[gp.inst[fUid].cid].name+'.');
 }
-function fireOnEnter(gp,uid,pid){const i=gp.inst[uid];if(!i)return;const c=CARDS[i.cid];if(c&&c.onEnter)c.onEnter(gp,{pid,src:uid});}
+function fireOnEnter(gp,uid,pid){
+  const i=gp.inst[uid];if(!i)return;const c=CARDS[i.cid];if(!c)return;
+  /* Same-name rule applies on every enter-play, not just hand-plays */
+  enforceSameNameRule(gp,uid,pid);
+  if(!gp.inst[uid])return; /* the newly-entered card was destroyed by the rule (edge case) */
+  if(c.onEnter)c.onEnter(gp,{pid,src:uid});
+}
+
+/* PER OFFICIAL RULES R1.0: only one Fighter or Weapon of the same name in play at a time.
+   If a duplicate enters, the older copy is destroyed (most common ruling — preserve the newer
+   investment of action economy). Tokens (Whump!, Head Rat, Bear Trap, Toolbox, Mimeoscope)
+   are exempt — they're not Fighters by name. */
+function enforceSameNameRule(gp,uid,pid){
+  const i=gp.inst[uid];if(!i)return;const c=CARDS[i.cid];if(!c)return;
+  if(c.type!=='fighter'&&c.type!=='weapon')return;
+  if(c.kind==='token'||c.type==='token')return;
+  /* Card text exemption: Gizzard, Persistent Pest explicitly allows any number of copies */
+  if(c.id==='render-mq831kn8')return;
+  const name=c.name;if(!name)return;
+  const dupes=gp.p[pid].board.filter(u=>{
+    if(u===uid)return false;
+    const o=gp.inst[u];return o&&CARDS[o.cid]&&CARDS[o.cid].name===name;
+  });
+  if(dupes.length){
+    dupes.forEach(u=>{log(gp,'Same-name rule: older '+name+' destroyed.');destroyInstance(gp,u,{skipFortify:true});});
+  }
+}
 function destroyInstance(gp,uid,opts){
   const i=gp.inst[uid];if(!i)return;const c=CARDS[i.cid];if(!c)return;const pid=i.owner;
   if(c.fortifyInstead&&!(opts&&opts.skipFortify)){
@@ -235,7 +454,7 @@ function dealDamage(gp,uid,amt){
     }
   }
   i.hp-=reduced;i.dmgThisLevel=true;
-  if(reduced>0)log(gp,c.name+' takes '+reduced+' damage.');
+  if(reduced>0){log(gp,c.name+' takes '+reduced+' damage.');showDamageNumber(uid,-reduced,'dmg');}
   if(i.hp<=0){
     /* Determination: if would die without a +1 Attack counter, set to 1 HP and give counter */
     if(c.determination&&!(i.counters&&i.counters.atk>0)){
@@ -261,7 +480,14 @@ function pendTarget(gp,opts,cb){
 function pendPick(gp,opts,cb){gp.pending={kind:'pick',forId:opts.forId,prompt:opts.prompt,options:opts.options};S.pendingCb=cb;}
 function pendDiscardOptional(gp,ctx,prompt,cb){
   gp.pending={kind:'discard',forId:ctx.pid,prompt,options:gp.p[ctx.pid].hand.map(u=>({label:CARDS[gp.inst[u].cid].name,value:u})).concat([{label:'Skip',value:''}])};
-  S.pendingCb=(gp2,v)=>cb(gp2,Object.assign({},ctx),v||null);
+  S.pendingCb=(gp2,v)=>{
+    if(v&&gp2.p[ctx.pid].hand.includes(v)){
+      moveZone(gp2,ctx.pid,v,'hand','grave');
+      log(gp2,gp2.p[ctx.pid].name+' discards '+CARDS[gp2.inst[v].cid].name+'.');
+      fireDiscardHooks(gp2,ctx.pid,[v]);
+    }
+    cb(gp2,Object.assign({},ctx),v||null);
+  };
 }
 function cancelPendingAttack(gp){gp.pendingAttack=null;}
 function resumeAttack(gp,ctx){finishAttackDamage(gp,ctx);}
@@ -282,7 +508,7 @@ function levelStart(gp,settings){
   gp.fighterLeftThisLevel=false;gp.ignoreStealthyLevel=false;
   Object.keys(gp.p).forEach(pid=>{
     if(gp.p[pid].defeated)return;
-    gp.p[pid].board.concat([gp.p[pid].boss]).forEach(u=>{if(!u)return;const i=gp.inst[u];if(!i)return;i.actedCount=0;i.tempAtk=0;i.costOverrideLevel=undefined;i.armorUsedThisLevel=0;if(i.stunned)i.stunned=false;});
+    gp.p[pid].board.concat([gp.p[pid].boss]).forEach(u=>{if(!u)return;const i=gp.inst[u];if(!i)return;i.actedCount=0;i.tempAtk=0;i.costOverrideLevel=undefined;i.armorUsedThisLevel=0;i.tempFaction=null;i._costOverride=null;if(i.stunned)i.stunned=false;});
     const hadNone=gp.p[pid].hand.length===0;
     drawN(gp,pid,settings.drawPerLevel||1);
     if(hadNone&&gp.inst[gp.p[pid].boss]&&gp.inst[gp.p[pid].boss].cid==='trapper')drawN(gp,pid,1);
@@ -331,39 +557,63 @@ function validDefenders(gp,attackerOwner,attackerCid){
   if(!attackerCid)return[];const c=CARDS[attackerCid];if(!c)return[];let targets=[];
   Object.keys(gp.p).forEach(pid=>{
     if(pid===attackerOwner||gp.p[pid].defeated)return;
-    const enf=gp.p[pid].board.filter(u=>gp.inst[u]&&gp.inst[u].hp>0&&(CARDS[gp.inst[u].cid].keywords||[]).includes('Enforcer'));
+    const enf=gp.p[pid].board.filter(u=>gp.inst[u]&&gp.inst[u].hp>0&&(CARDS[gp.inst[u].cid].keywords||[]).includes('Enforcer')&&!isUntargetable(gp,u,attackerOwner));
     if(enf.length&&!(c.atkFlags&&c.atkFlags.ignoreEnforcer)){targets=targets.concat(enf);return;}
     gp.p[pid].board.forEach(u=>{
       const i=gp.inst[u];if(!i||i.hp<=0)return;const cc=CARDS[i.cid];if(!cc)return;
       if((cc.keywords||[]).includes('Stealthy')&&i.enterLevel===gp.level&&!gp.ignoreStealthyLevel)return;
       if(cc.cantBeAttackedIfTokenAlive&&gp.p[pid].board.some(u2=>gp.inst[u2]&&CARDS[gp.inst[u2].cid].id===cc.cantBeAttackedIfTokenAlive&&gp.inst[u2].hp>0))return;
+      if(isUntargetable(gp,u,attackerOwner))return;
       targets.push(u);
     });
-    if(gp.p[pid].boss&&gp.inst[gp.p[pid].boss]&&gp.inst[gp.p[pid].boss].hp>0)targets.push(gp.p[pid].boss);
+    if(gp.p[pid].boss&&gp.inst[gp.p[pid].boss]&&gp.inst[gp.p[pid].boss].hp>0){
+      if(!isUntargetable(gp,gp.p[pid].boss,attackerOwner))targets.push(gp.p[pid].boss);
+    }
   });
   return targets;
 }
 function declareAttack(gp,atkUid,defUid,ctxPid){
   const cost=effectiveAtkCost(gp,atkUid);if(!spendCoins(gp,ctxPid,cost))return false;
   gp.inst[atkUid].actedCount=(gp.inst[atkUid].actedCount||0)+1;gp.passedSet=[];
+  showAttackFlash(atkUid,defUid);
+  fireOnAttacked(gp,defUid,atkUid);
   const ctx={pid:ctxPid,attacker:atkUid,defender:defUid};
   const c=CARDS[gp.inst[atkUid].cid];
   if(c.preAttack){c.preAttack(gp,ctx);return true;}
   finishAttackDamage(gp,ctx);return true;
 }
+function combatDamage(gp,atkUid,defUid){
+  const s=instSummary(gp,atkUid);if(!s)return 0;
+  let dmg=s.atk;
+  const ac=CARDS[gp.inst[atkUid].cid];const dc=CARDS[gp.inst[defUid].cid];
+  const aInst=gp.inst[atkUid];const dInst=gp.inst[defUid];
+  const aFac=aInst.tempFaction||(ac&&ac.faction);
+  const dFac=dInst.tempFaction||(dc&&dc.faction);
+  /* Attacker-side conditional: card's attackerMod(gp,atkUid,defUid) -> number */
+  if(ac&&ac.attackerMod){dmg+=ac.attackerMod(gp,atkUid,defUid,{aFac,dFac})||0;}
+  /* Defender-side conditional: defender card may reduce damage by faction match */
+  if(dc&&dc.defenderMod){dmg+=dc.defenderMod(gp,atkUid,defUid,{aFac,dFac})||0;}
+  return Math.max(0,dmg);
+}
 function finishAttackDamage(gp,ctx){
-  const s=instSummary(gp,ctx.attacker);if(!s)return;const dmg=s.atk;
+  const dmg=combatDamage(gp,ctx.attacker,ctx.defender);
+  const defenderCidBefore=gp.inst[ctx.defender]?gp.inst[ctx.defender].cid:null;
   dealDamage(gp,ctx.defender,dmg);
-  (gp.inst[ctx.attacker].wielded||[]).forEach(wu=>{const wc=CARDS[gp.inst[wu].cid];if(wc&&wc.onWielderDealtDamage)wc.onWielderDealtDamage(gp,ctx.attacker,dmg);});
-  const ac=CARDS[gp.inst[ctx.attacker].cid];if(ac&&ac.onAttack)ac.onAttack(gp,{pid:ctx.pid,src:ctx.attacker});
-  log(gp,ac.name+' attacks for '+dmg+' damage.');
+  (gp.inst[ctx.attacker]&&gp.inst[ctx.attacker].wielded||[]).forEach(wu=>{const wc=CARDS[gp.inst[wu].cid];if(wc&&wc.onWielderDealtDamage)wc.onWielderDealtDamage(gp,ctx.attacker,dmg);});
+  const ac=CARDS[(gp.inst[ctx.attacker]||{}).cid];if(ac&&ac.onAttack)ac.onAttack(gp,{pid:ctx.pid,src:ctx.attacker});
+  if(ac)log(gp,ac.name+' attacks for '+dmg+' damage.');
+  /* Did the attacker kill the defender? Fire onAttackKill (Trouble, Muck, Charlotte). */
+  const defGone=!gp.inst[ctx.defender]||gp.inst[ctx.defender].hp<=0;
+  if(defGone&&gp.inst[ctx.attacker]&&ac&&ac.onAttackKill){
+    ac.onAttackKill(gp,{pid:ctx.pid,src:ctx.attacker,defenderCid:defenderCidBefore,defenderUid:ctx.defender});
+  }
 }
 
 /* UI ACTIONS */
 window.createRoom=async function(){
   if(!S.name.trim())return alert('Enter a username first.');
   const code=roomCode();const pid=uid(8);
-  const room={code,hostId:pid,phase:'lobby',settings:{startHand:5,drawPerLevel:1},players:[{id:pid,name:S.name,ready:false,factions:[],bossId:null,list:{}}],game:null,v:0,log:[]};
+  const room={code,hostId:pid,phase:'lobby',settings:{startHand:4,drawPerLevel:1},players:[{id:pid,name:S.name,ready:false,factions:[],bossId:null,list:{}}],game:null,v:0,log:[]};
   S.busy=true;render();const ok=await saveRoom(room);S.busy=false;
   if(!ok)return alert('Could not connect to Supabase. Check credentials.');
   setMyPid(code,pid);S.code=code;S.myId=pid;S.room=room;S.screen='lobby';
@@ -383,23 +633,60 @@ window.joinRoom=async function(){
 window.startBuild=async function(){await act(r=>{r.phase='build';});};
 window.toggleFaction=async function(f){await act(r=>{const me=r.players.find(p=>p.id===S.myId);const i=me.factions.indexOf(f);if(i>=0)me.factions.splice(i,1);else{if(me.factions.length>=2)me.factions.shift();me.factions.push(f);}me.bossId=null;me.list={};});};
 window.pickBoss=async function(cid){await act(r=>{r.players.find(p=>p.id===S.myId).bossId=cid;});};
-window.adjustCard=async function(cid,delta){await act(r=>{const me=r.players.find(p=>p.id===S.myId);const cur=me.list[cid]||0;const next=Math.max(0,Math.min(3,cur+delta));const total=Object.entries(me.list).reduce((s,[k,v])=>s+(k===cid?0:v),0)+next;if(next>cur&&total>39)return;me.list[cid]=next;if(!me.list[cid])delete me.list[cid];});};
-window.markReady=async function(){await act(r=>{const me=r.players.find(p=>p.id===S.myId);const total=Object.values(me.list).reduce((a,b)=>a+b,0);if(!me.bossId)return alert('Pick a Boss first.');if(total!==39)return alert('You need exactly 39 non-Boss cards (currently '+total+').');me.ready=true;});};
+window.adjustCard=async function(cid,delta){await act(r=>{const me=r.players.find(p=>p.id===S.myId);const cur=me.list[cid]||0;const next=Math.max(0,Math.min(3,cur+delta));const total=Object.entries(me.list).reduce((s,[k,v])=>s+(k===cid?0:v),0)+next;if(next>cur&&total>40)return;me.list[cid]=next;if(!me.list[cid])delete me.list[cid];});};
+window.markReady=async function(){await act(r=>{const me=r.players.find(p=>p.id===S.myId);const total=Object.values(me.list).reduce((a,b)=>a+b,0);if(!me.bossId)return alert('Pick a Boss first.');if(total!==40)return alert('You need exactly 40 non-Boss cards (currently '+total+').');me.ready=true;});};
 window.unready=async function(){await act(r=>{r.players.find(p=>p.id===S.myId).ready=false;});};
 window.beginGame=async function(){await act(r=>{startGame(r);});};
-window.doMulligan=async function(){await act(r=>{const gp=r.game;const pid=S.myId;if(gp.p[pid].mullUsed)return;if(gp.level!==1)return;if(gp.p[pid].hasActed)return;const hand=gp.p[pid].hand.slice();gp.p[pid].deck=shuffle(gp.p[pid].deck.concat(hand));gp.p[pid].hand=[];drawN(gp,pid,r.settings.startHand);gp.p[pid].mullUsed=true;log(gp,gp.p[pid].name+' mulligans.');});};
+window.doMulligan=function(){
+  /* Open the mulligan picker. Player selects any number of cards to set aside,
+     then draws that many, then the set-aside cards are shuffled back into the deck. */
+  if(!S.room||!S.room.game)return;
+  const gp=S.room.game;const me=gp.p[S.myId];if(!me)return;
+  if(me.mullUsed)return alert('You already mulliganed.');
+  if(gp.level!==1)return alert('Mulligan only available at Level 1.');
+  if(me.hasActed)return alert('You\u2019ve already taken an action this game.');
+  S.mullSel=new Set();S.mullOpen=true;render();
+};
+window.toggleMullCard=function(uid){
+  if(!S.mullSel)S.mullSel=new Set();
+  if(S.mullSel.has(uid))S.mullSel.delete(uid);else S.mullSel.add(uid);
+  render();
+};
+window.confirmMulligan=async function(){
+  const sel=Array.from(S.mullSel||[]);
+  await act(r=>{const gp=r.game;const me=gp.p[S.myId];if(!me||me.mullUsed)return;
+    /* Move selected cards from hand back into deck, draw replacements, then shuffle. */
+    sel.forEach(u=>{const idx=me.hand.indexOf(u);if(idx>=0)me.hand.splice(idx,1);me.deck.push(u);});
+    drawN(gp,S.myId,sel.length);
+    me.deck=shuffle(me.deck);
+    me.mullUsed=true;
+    log(gp,me.name+' mulligans '+sel.length+' card(s).');
+  });
+  S.mullSel=null;S.mullOpen=false;render();
+};
+window.cancelMulligan=function(){S.mullSel=null;S.mullOpen=false;render();};
 window.playHandCard=async function(u){
   await act(r=>{const gp=r.game;const pid=S.myId;const c=CARDS[gp.inst[u].cid];
     if(gp.curIdx!==gp.order.indexOf(pid)&&c.speed!=='instant')return alert('Not your turn.');
-    if(gp.p[pid].coins<(c.cost||0))return alert('Not enough coins.');
+    /* PER OFFICIAL RULES R1.0: Fighters and Weapons have NO play cost — level-gated only.
+       Only Tactics and Responses spend coins on play. */
+    const playCost=(c.type==='fighter'||c.type==='weapon')?0:(c.cost||0);
+    if(gp.p[pid].coins<playCost)return alert('Not enough coins.');
     if(c.type==='fighter'){if((c.level||0)>gp.level)return alert('Level requirement not met (need Lvl '+(c.level)+').');
-      spendCoins(gp,pid,c.cost||0);moveZone(gp,pid,u,'hand','board');resetInstance(gp,u);fireOnEnter(gp,u,pid);gp.passedSet=[];}
+      moveZone(gp,pid,u,'hand','board');resetInstance(gp,u);
+      fireOnEnter(gp,u,pid); /* fireOnEnter now auto-enforces same-name rule */
+      gp.passedSet=[];}
     else if(c.type==='weapon'){if((c.level||0)>gp.level)return alert('Level requirement not met.');
       if(!gp.p[pid].board.filter(x=>gp.inst[x]&&gp.inst[x].kind==='fighter').length)return alert('No Fighter to wield this to.');
-      spendCoins(gp,pid,c.cost||0);moveZone(gp,pid,u,'hand','board');gp.passedSet=[];
-      pendTarget(gp,{forId:pid,prompt:'Wield '+c.name+' to which Fighter?',filter:i=>i.kind==='fighter'&&i.owner===pid},(gp2,fUid)=>wieldWeapon(gp2,u,fUid));}
-    else{spendCoins(gp,pid,c.cost||0);moveZone(gp,pid,u,'hand','grave');gp.passedSet=[];
-      if(c.run)c.run(gp,{pid});else log(gp,c.name+' played \u2014 resolve manually: "'+c.text+'"');}
+      moveZone(gp,pid,u,'hand','board');
+      enforceSameNameRule(gp,u,pid);
+      if(gp.inst[u]){
+        gp.passedSet=[];
+        pendTarget(gp,{forId:pid,prompt:'Wield '+c.name+' to which Fighter?',filter:i=>i.kind==='fighter'&&i.owner===pid},(gp2,fUid)=>wieldWeapon(gp2,u,fUid));
+      }}
+    else{spendCoins(gp,pid,playCost);moveZone(gp,pid,u,'hand','grave');gp.passedSet=[];
+      if(c.run){log(gp,gp.p[pid].name+' plays '+c.name+'.');c.run(gp,{pid,src:u});}
+      else log(gp,gp.p[pid].name+' plays '+c.name+' \u2014 GM mode for manual effects, or right-click card to read.');}
     gp.p[pid].hasActed=true;
     if(!gp.pending)nextTurn(gp);});
 };
@@ -410,6 +697,7 @@ window.confirmAttack=async function(defUid){
   await act(r=>{const gp=r.game;const pid=S.myId;
     if(gp.curIdx!==gp.order.indexOf(pid))return alert('Not your turn.');
     if(!canAct(gp,atkUid))return alert('That unit can\'t act again this level.');
+    if(!diffinCanAttack(gp,atkUid))return alert('Diffin can only attack if you have a Fighter with 5+ Health on your team.');
     if(!declareAttack(gp,atkUid,defUid,pid))return alert('Not enough coins to attack.');
     gp.p[pid].hasActed=true;
     if(!gp.pending)nextTurn(gp);});
@@ -449,6 +737,46 @@ window.leaveTable=function(){unsubscribeRoom();history.replaceState({},'',window
 window.toggleHelp=function(){S.helpOpen=!S.helpOpen;render();};
 window.toggleLog=function(){S.logOpen=!S.logOpen;render();};
 window.toggleGm=function(){S.gmMode=!S.gmMode;S.gmEditUid=null;render();};
+window.viewPile=function(pid,zone){
+  S.pileView={pid,zone,filter:''};render();
+};
+window.closePileView=function(){S.pileView=null;render();};
+window.pileFilter=function(v){if(S.pileView){S.pileView.filter=v;render();}};
+window.shuffleDeck=async function(pid){
+  if(pid!==S.myId&&!S.gmMode){alert('GM mode required to shuffle opponents\u2019 decks.');return;}
+  await act(r=>{r.game.p[pid].deck=shuffle(r.game.p[pid].deck);log(r.game,r.game.p[pid].name+'\u2019s deck shuffled.');});
+};
+window.loadPreset=async function(presetId){
+  const preset=(window.CATA_PRESET_DECKS||[]).find(d=>d.id===presetId);
+  if(!preset)return alert('Preset not found.');
+  await act(r=>{
+    const me=r.players.find(p=>p.id===S.myId);if(!me)return;
+    me.factions=preset.factions.slice();
+    me.bossId=preset.bossId;
+    me.list=Object.assign({},preset.cards);
+    me.ready=false;
+  });
+};
+window.showPresetDetail=function(presetId){
+  const preset=(window.CATA_PRESET_DECKS||[]).find(d=>d.id===presetId);
+  if(!preset)return;
+  S.presetDetail=preset;render();
+};
+window.closePresetDetail=function(){S.presetDetail=null;render();};
+window.pileMove=async function(uid,dest){
+  if(!S.pileView)return;const pid=S.pileView.pid,zone=S.pileView.zone;
+  /* Only allow moves on YOUR OWN piles unless GM mode is on */
+  if(pid!==S.myId&&!S.gmMode){alert('You can only move cards in your own piles (or enable GM mode).');return;}
+  await act(r=>{const gp=r.game;
+    moveZone(gp,pid,uid,zone,dest);
+    if(dest==='board'){resetInstance(gp,uid);fireOnEnter(gp,uid,pid);}
+    log(gp,'['+(pid===S.myId?'You':gp.p[pid].name)+'] moved '+CARDS[gp.inst[uid].cid].name+' from '+zone+' → '+dest+'.');
+    /* If they took a card out of deck or back, shuffle deck */
+    if(zone==='deck'||dest==='deck'){gp.p[pid].deck=shuffle(gp.p[pid].deck);log(gp,gp.p[pid].name+'\u2019s deck shuffled.');}
+  });
+  /* Refresh pile view if still relevant */
+  if(S.pileView){render();}
+};
 window.gmEdit=function(uid){S.gmEditUid=uid;render();};
 window.gmCloseEdit=function(){S.gmEditUid=null;render();};
 window.gmAdjustHp=async function(uid,delta){
@@ -540,7 +868,7 @@ function bCard(gp,uid,opts){
     (c.activated||[]).forEach((ab,idx)=>{actBtns+=`<button class="bcard-btn ab-btn" onclick="useAbility('${uid}',${idx})" title="${ab.label}">${ab.label.slice(0,16)}</button>`;});
     (i.wielded||[]).filter(wu=>gp.inst[wu]).forEach(wu=>{const wc=CARDS[gp.inst[wu].cid];([...(wc.weaponActivated||[]),(wc.grantsActivated||[])]).flat().forEach((ab,ai)=>{actBtns+=`<button class="bcard-btn ab-btn" onclick="useAbility('${uid}','w${wu}${ai}')" title="${ab.label}">${ab.label.slice(0,16)}</button>`;});});
   }
-  return`<div class="zone-wrap"><div class="${cls}" style="border-color:${clickable?'var(--ap)':fCol+'40'}"${clickFn?` onclick="${clickFn}"`:''}
+  return`<div class="zone-wrap"><div class="${cls}" data-uid="${uid}" style="border-color:${clickable?'var(--ap)':fCol+'40'}"${clickFn?` onclick="${clickFn}"`:''}
     oncontextmenu="showZoom('${i.cid}');return false">
     ${artImg(i.cid,'bcard-art')}
     ${S.gmMode?`<button class="bcard-gm" onclick="event.stopPropagation();gmEdit('${uid}')" title="GM edit">&#9881;</button>`:''}
@@ -554,14 +882,15 @@ function bCard(gp,uid,opts){
   </div><div class="zone-tag">${s.kind==='boss'?'BOSS':c.type==='weapon'?'WPN':'FTR'}</div></div>`;
 }
 
-function hCard(gp,uid,myTurn,pend){
+function hCard(gp,uid,myTurn,pend,fanOpts){
   const i=gp.inst[uid];if(!i)return'';const c=CARDS[i.cid];
   const fCol=FCOL[c.faction]||'#888';
   const canPlay=myTurn&&gp.p[S.myId].coins>=(c.cost||0)&&(!c.level||c.level<=gp.level)&&!pend&&!S.attackPick;
   const isInstant=c.speed==='instant'&&gp.p[S.myId].coins>=(c.cost||0)&&!pend;
   const playable=canPlay||isInstant;
   const typeChar=c.type==='fighter'?'F':c.type==='weapon'?'W':c.type==='tactic'?'T':'R';
-  return`<div class="hcard${playable?'':' unplayable'}" style="border-color:${fCol}55"
+  const fanStyle=fanOpts?`--hand-rot:${fanOpts.rot};--hand-lift:${fanOpts.lift};`:'';
+  return`<div class="hcard${playable?'':' unplayable'}" ${fanOpts?`data-hand-pos="${fanOpts.idx}"`:''} style="border-color:${fCol}55;${fanStyle}"
     ${playable?`onclick="playHandCard('${uid}')"`:''}
     oncontextmenu="showZoom('${i.cid}');return false">
     ${artImg(i.cid,'hcard-art')}
@@ -599,8 +928,9 @@ function playerStrip(gp,pid,isOpp){
       <div class="hp-num">${b?b.hp:'?'}/${b?b.maxHp:'?'}</div>
     </div>
     <div class="ps-piles">
-      <div class="pile deck-pile" title="Deck (${p.deck.length} cards)"><span class="pile-n">${p.deck.length}</span><span class="pile-l">DECK</span></div>
-      <div class="pile grave-pile" title="Discard (${p.grave.length} cards)"><span class="pile-n">${p.grave.length}</span><span class="pile-l">DSCRD</span></div>
+      <div class="pile deck-pile" title="Click to view deck (${p.deck.length} cards)" onclick="viewPile('${pid}','deck')"><span class="pile-n">${p.deck.length}</span><span class="pile-l">DECK</span></div>
+      ${p.topRevealed&&p.deck.length?`<div class="pile-revealed" title="Top of deck revealed (Hot Mike)" onclick="showZoom('${gp.inst[p.deck[0]].cid}')">${artImg(gp.inst[p.deck[0]].cid,'pile-revealed-img')}<span class="pile-revealed-lbl">TOP</span></div>`:''}
+      <div class="pile grave-pile" title="Click to view discard (${p.grave.length} cards)" onclick="viewPile('${pid}','grave')"><span class="pile-n">${p.grave.length}</span><span class="pile-l">DSCRD</span></div>
       ${!isOpp?`<div class="pile hand-pile" title="Hand"><span class="pile-n">${p.hand.length}</span><span class="pile-l">HAND</span></div>`:`<div class="pile hand-pile" title="Opp. Hand"><span class="pile-n">${p.hand.length}</span><span class="pile-l">HAND</span></div>`}
     </div>
     ${!isOpp?`<div class="ps-coins"><span class="coin-badge">${p.coins} &#9711;</span></div>`:`<div class="ps-coins"><span class="coin-badge opp">${p.coins} &#9711;</span></div>`}
@@ -665,8 +995,34 @@ function renderBuild(){
   const pool=poolForFactions(me.factions||[]);
   const bosses=pool.filter(c=>c.type==='boss');const nonBoss=pool.filter(c=>c.type!=='boss');
   const total=Object.values(me.list||{}).reduce((a,b)=>a+b,0);
-  let h=`<div class="wrap"><h2 style="font-size:18px;margin-bottom:12px">DECK BUILDER</h2>
-    <div class="section-h">1. CHOOSE UP TO 2 FACTIONS</div><div style="margin-bottom:8px">`;
+  let h=`<div class="wrap"><h2 style="font-size:18px;margin-bottom:12px">DECK BUILDER</h2>`;
+
+  /* ── PRESET DECK PICKER ── */
+  const presets=(typeof window!=='undefined'&&window.CATA_PRESET_DECKS)||[];
+  if(presets.length){
+    h+=`<div class="section-h">QUICK START — PRE-BUILT DECKS</div>`;
+    h+=`<div class="preset-grid">`;
+    presets.forEach(d=>{
+      const bossCard=CARDS[d.bossId];
+      const facBadges=(d.factions||[]).map(f=>{const m=FACTION_META[f]||{};return`<span class="preset-fac ${m.cls||''}">${m.name||f}</span>`;}).join('');
+      h+=`<div class="preset-tile">
+        ${bossCard?artImg(d.bossId,'preset-boss-img'):'<div class="preset-boss-img-fb" style="aspect-ratio:5/7;background:#000"></div>'}
+        <div class="preset-body">
+          <div class="preset-name">${d.name}</div>
+          <div class="preset-sub">${d.subtitle}</div>
+          <div class="preset-facs">${facBadges}</div>
+          <div class="preset-tagline">${d.tagline}</div>
+          <div class="preset-actions">
+            <button class="btn sm preset-pick" onclick="loadPreset('${d.id}')">USE THIS DECK</button>
+            <button class="btn ghost sm" onclick="showPresetDetail('${d.id}')">Details</button>
+          </div>
+        </div>
+      </div>`;
+    });
+    h+=`</div>`;
+  }
+
+  h+=`<div class="section-h">OR BUILD YOUR OWN — 1. CHOOSE UP TO 2 FACTIONS</div><div style="margin-bottom:8px">`;
   Object.entries(FACTION_META).forEach(([f,m])=>{const on=(me.factions||[]).includes(f);h+=`<span class="faction-chip ${m.cls}${on?' on':' off'}" onclick="toggleFaction('${f}')">${m.name}</span>`;});
   h+='</div>';
   if((me.factions||[]).length){
@@ -677,8 +1033,8 @@ function renderBuild(){
       ${artImg(b.id,'boss-tile-img')}
       <div class="boss-tile-cap">${b.name}${me.bossId===b.id?' <span style="color:var(--ap)">&#10003;</span>':''}</div>
     </div>`;});
-    h+='</div><div class="section-h">3. BUILD 39 CARDS (MAX 3 COPIES EACH)</div>';
-    h+=`<div class="build-summary">${total}/39 cards &nbsp;&#8226;&nbsp; ${Object.values(me.list||{}).filter(v=>v>0).length} unique cards<div class="progress-bar"><div class="progress-fill" style="width:${Math.min(100,total/39*100)}%"></div></div></div>`;
+    h+='</div><div class="section-h">3. BUILD 40 CARDS (MAX 3 COPIES EACH)</div>';
+    h+=`<div class="build-summary">${total}/40 cards &nbsp;&#8226;&nbsp; ${Object.values(me.list||{}).filter(v=>v>0).length} unique cards<div class="progress-bar"><div class="progress-fill" style="width:${Math.min(100,total/40*100)}%"></div></div></div>`;
     h+='<div class="deck-grid">';
     nonBoss.forEach(c=>{const n=(me.list||{})[c.id]||0;
       h+=`<div class="dtile${n>0?' has':''}${n>=3?' max':''}" oncontextmenu="showZoom('${c.id}');return false" title="${c.name} \u2014 right-click for details">
@@ -743,10 +1099,16 @@ function renderPlay(){
     h+=`<div class="action-bar atk">&#9876; Attacking with <b>${CARDS[gp.inst[S.attackPick].cid].name}</b> — click a target above &nbsp; <button class="btn ghost sm" onclick="cancelAttackPick()">Cancel</button></div>`;
   }
 
-  /* Hand strip */
+  /* Hand strip — curved fan: each card gets a rotation and lift based on its index */
   h+=`<div class="hand-strip">`;
   if(!myP.hand.length)h+='<div class="small" style="margin:auto;color:var(--dim)">Hand is empty</div>';
-  myP.hand.forEach(u=>{h+=hCard(gp,u,myTurn,pend);});
+  const hn=myP.hand.length;const center=(hn-1)/2;const maxRot=hn>1?Math.min(22,hn*3.5):0;
+  myP.hand.forEach((u,idx)=>{
+    const off=hn>1?(idx-center)/center:0; /* -1..1 */
+    const rot=(off*maxRot).toFixed(2)+'deg';
+    const lift=(Math.abs(off)*Math.abs(off)*16).toFixed(1)+'px'; /* parabolic lift, edges higher */
+    h+=hCard(gp,u,myTurn,pend,{idx,rot,lift});
+  });
   h+=`</div>`;
 
   /* Log (collapsible, opens via button) */
@@ -757,11 +1119,17 @@ function renderPlay(){
   } else {
     h+=`<button class="log-fab" onclick="toggleLog()" title="Show game log">&#9776;</button>`;
   }
+  /* Always-available dice button, just below the log fab */
+  h+=`<div class="dice-fab-group">
+    <button class="dice-fab" onclick="rollDieManual(6)" title="Roll a d6 (key game rule!)">&#9860; d6</button>
+    <button class="dice-fab small" onclick="rollDieManual(20)" title="Roll a d20">d20</button>
+  </div>`;
 
   h+=renderGmPanel(gp);
 
   h+='</div>';
   h+=renderGmEdit(gp);
+  h+=renderPileView(gp);
   return h;
 }
 
@@ -786,6 +1154,10 @@ function renderGmPanel(gp){
     </div>`;
   });
   h+='<div class="gm-foot">Click &#9881; on any board card to edit its HP / counters / status.</div>';
+  h+='<div class="gm-foot" style="margin-top:6px;border-top:1px solid rgba(240,180,41,0.15);padding-top:8px">ROLL DIE</div>';
+  h+='<div class="gm-row gm-dice-row">';
+  [4,6,8,10,12,20].forEach(s=>{h+=`<button class="gm-mini" onclick="rollDieManual(${s})" title="Roll a d${s}">d${s}</button>`;});
+  h+='</div>';
   h+='</div></div>';
   return h;
 }
@@ -848,6 +1220,134 @@ function renderGmEdit(gp){
   </div>`;
 }
 
+function renderPileView(gp){
+  if(!S.pileView)return'';
+  const {pid,zone,filter}=S.pileView;
+  if(!gp.p[pid])return'';
+  const list=gp.p[pid][zone]||[];
+  const isMine=pid===S.myId;
+  const isDeck=zone==='deck';
+  const zoneLabel=isDeck?'DECK':zone==='grave'?'DISCARD':'HAND';
+  const filt=(filter||'').toLowerCase();
+  const filtered=list.map(u=>({uid:u,c:CARDS[gp.inst[u].cid]})).filter(o=>!filt||(o.c&&o.c.name.toLowerCase().includes(filt))||(o.c&&(o.c.type||'').toLowerCase().includes(filt))||(o.c&&(o.c.faction||'').toLowerCase().includes(filt)));
+  /* Sort deck view alphabetically for searchability; discard chronological (last on top) */
+  const sorted=isDeck?filtered.slice().sort((a,b)=>(a.c.name||'').localeCompare(b.c.name||'')):filtered.slice().reverse();
+  return`<div class="overlay" onclick="if(event.target===this)closePileView()">
+    <div class="pile-view">
+      <div class="pile-view-head">
+        <div>
+          <div class="pile-view-title">${gp.p[pid].name}\u2019s ${zoneLabel}</div>
+          <div class="pile-view-sub">${list.length} card${list.length===1?'':'s'}${isDeck?' \u00b7 sorted by name (hidden from opponents in real play)':''}</div>
+        </div>
+        <button class="pile-view-x" onclick="closePileView()">&#10005;</button>
+      </div>
+      <div class="pile-view-search">
+        <input type="text" placeholder="Filter by name / type / faction\u2026" value="${filter||''}" oninput="pileFilter(this.value)" autofocus>
+        ${(isMine||S.gmMode)&&isDeck?`<button class="btn ghost sm" onclick="shuffleDeck('${pid}')">Shuffle</button>`:''}
+      </div>
+      <div class="pile-view-body">
+        ${sorted.length?sorted.map(o=>{const cl=o.c||{};const fc=FCOL[cl.faction]||'#888';
+          const canAct=isMine||S.gmMode;
+          const actions=canAct?`<div class="pv-actions">
+            ${zone==='grave'?`<button class="gm-mini" onclick="pileMove('${o.uid}','hand')" title="To hand">\u2191 Hand</button>`:''}
+            ${zone==='deck'?`<button class="gm-mini" onclick="pileMove('${o.uid}','hand')" title="Pull to hand (search)">\u2192 Hand</button>`:''}
+            ${zone==='deck'?`<button class="gm-mini" onclick="pileMove('${o.uid}','grave')" title="To discard">\u2192 Discard</button>`:''}
+            ${zone==='grave'?`<button class="gm-mini" onclick="pileMove('${o.uid}','deck-top')" title="To top of deck">\u2191 Deck top</button>`:''}
+          </div>`:'';
+          return`<div class="pv-row">
+            <div class="pv-thumb" oncontextmenu="showZoom('${o.uid&&gp.inst[o.uid]?gp.inst[o.uid].cid:''}');return false" onclick="showZoom('${o.uid&&gp.inst[o.uid]?gp.inst[o.uid].cid:''}')">${artImg(gp.inst[o.uid].cid,'pv-thumb-img')}</div>
+            <div class="pv-info">
+              <div class="pv-name" style="color:${fc}">${cl.name||'?'}</div>
+              <div class="pv-meta">${(cl.faction||'').toUpperCase()} \u00b7 ${(cl.type||'').toUpperCase()}${cl.level?' L'+cl.level:''}${cl.cost!==undefined?' \u00b7 '+cl.cost+'\u2299':''}</div>
+              ${actions}
+            </div>
+          </div>`;
+        }).join(''):'<div class="pv-empty">No cards match.</div>'}
+      </div>
+      <div class="pile-view-foot">
+        ${isMine||S.gmMode?'Tip: in real play, "search your deck" effects let you find a specific card. Click an action above. The deck auto-shuffles after.':'<span style="color:var(--dim)">Read-only \u2014 GM mode required to move opponents\u2019 cards.</span>'}
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderPresetDetail(){
+  const p=S.presetDetail;if(!p)return'';
+  const bossCard=CARDS[p.bossId];
+  /* Build the card list grouped by type */
+  const groups={fighter:[],weapon:[],tactic:[],response:[]};
+  Object.entries(p.cards).forEach(([cid,q])=>{
+    const c=CARDS[cid];if(!c)return;
+    if(groups[c.type])groups[c.type].push({c,q});
+  });
+  Object.values(groups).forEach(g=>g.sort((a,b)=>(a.c.faction||'').localeCompare(b.c.faction||'')||a.c.name.localeCompare(b.c.name)));
+  const sectionHtml=(title,arr)=>{
+    if(!arr.length)return'';
+    return`<div class="pd-section"><div class="pd-section-h">${title} (${arr.reduce((s,o)=>s+o.q,0)})</div><div class="pd-cards">${arr.map(o=>{const fc=FCOL[o.c.faction]||'#888';return`<div class="pd-card" style="border-left-color:${fc}" onclick="showZoom('${o.c.id}')"><div class="pd-card-q">\u00d7${o.q}</div><div class="pd-card-name" style="color:${fc}">${o.c.name}</div><div class="pd-card-meta">${(o.c.faction||'').toUpperCase()}${o.c.level?' L'+o.c.level:''}${o.c.cost!==undefined?' \u00b7 '+o.c.cost+'\u2299':''}</div></div>`;}).join('')}</div></div>`;
+  };
+  return`<div class="overlay" onclick="if(event.target===this)closePresetDetail()">
+    <div class="preset-detail">
+      <div class="preset-detail-head">
+        <div>
+          <div class="preset-detail-name">${p.name}</div>
+          <div class="preset-detail-sub">${p.subtitle}</div>
+        </div>
+        <button class="zoom-close" style="position:relative;top:0;right:0" onclick="closePresetDetail()">&#10005;</button>
+      </div>
+      <div class="preset-detail-body">
+        <div class="preset-detail-row">
+          ${bossCard?`<div class="preset-detail-boss">${artImg(p.bossId,'preset-detail-boss-img')}<div class="preset-detail-boss-cap">BOSS: ${bossCard.name}</div></div>`:''}
+          <div class="preset-detail-txt">
+            <div class="pd-h">Strategy</div><div class="pd-p">${p.strategy}</div>
+            <div class="pd-h">Level Gameplan</div>
+            <ul class="pd-list">${(p.gameplan||[]).map(g=>`<li>${g}</li>`).join('')}</ul>
+          </div>
+        </div>
+        ${sectionHtml('Fighters',groups.fighter)}
+        ${sectionHtml('Weapons',groups.weapon)}
+        ${sectionHtml('Tactics',groups.tactic)}
+        ${sectionHtml('Responses',groups.response)}
+      </div>
+      <div class="preset-detail-foot">
+        <button class="btn" onclick="loadPreset('${p.id}');closePresetDetail()">USE THIS DECK</button>
+        <button class="btn ghost" onclick="closePresetDetail()">Close</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderMulligan(){
+  if(!S.mullOpen||!S.room||!S.room.game)return'';
+  const gp=S.room.game;const me=gp.p[S.myId];if(!me)return'';
+  const sel=S.mullSel||new Set();
+  return`<div class="overlay" onclick="if(event.target===this)cancelMulligan()">
+    <div class="mull-modal">
+      <div class="mull-head">
+        <div>
+          <div class="mull-title">Mulligan</div>
+          <div class="mull-sub">Tap any cards to set aside. You'll draw that many replacements, then the set-aside cards shuffle back into your deck.</div>
+        </div>
+        <button class="zoom-close" style="position:relative;top:0;right:0" onclick="cancelMulligan()">&#10005;</button>
+      </div>
+      <div class="mull-body">
+        ${me.hand.map(u=>{const c=CARDS[gp.inst[u].cid]||{};const picked=sel.has(u);const fc=FCOL[c.faction]||'#888';
+          return`<div class="mull-card${picked?' picked':''}" style="border-color:${picked?'var(--ap)':fc+'80'}" onclick="toggleMullCard('${u}')">
+            ${artImg(gp.inst[u].cid,'mull-card-img')}
+            <div class="mull-card-cap">${c.name||'?'}</div>
+            ${picked?'<div class="mull-card-x">SET ASIDE</div>':''}
+          </div>`;
+        }).join('')}
+      </div>
+      <div class="mull-foot">
+        <span class="mull-stat">${sel.size} of ${me.hand.length} selected</span>
+        <div style="flex:1"></div>
+        <button class="btn ghost sm" onclick="cancelMulligan()">Cancel</button>
+        <button class="btn sm" onclick="confirmMulligan()">${sel.size?'Mulligan '+sel.size+' card'+(sel.size===1?'':'s'):'Keep all (skip)'}</button>
+      </div>
+    </div>
+  </div>`;
+}
+
 function renderWinner(gp){
   return`<div id="game-table"><div class="winner-screen">
     <h1>${gp.winner==='draw'?'DRAW!':(gp.p[gp.winner]?gp.p[gp.winner].name:'???')+' WINS!'}</h1>
@@ -876,6 +1376,8 @@ function render(){
   }
   if(S.helpOpen)h+=renderHelp();
   if(S.zoomCid)h+=renderZoom();
+  if(S.presetDetail)h+=renderPresetDetail();
+  if(S.mullOpen)h+=renderMulligan();
   app.innerHTML=h;
 }
 
@@ -891,3 +1393,126 @@ function render(){
   setInterval(async()=>{if(!S.code||S.busy||!_db)return;const f=await loadRoom(S.code);if(f&&(!S.room||f.v>S.room.v)){S.room=f;render();}},8000);
   render();
 })();
+
+/* ════════════════════════════════════════════════════════════
+   ENGINE EXTENSIONS — close the remaining _info gaps
+════════════════════════════════════════════════════════════ */
+
+/* Dice with on-screen animation. Roll happens immediately, but the visual
+   shows a tumbling die for ~900ms before settling on the result. */
+function rollDieVisible(sides,reason,cb){
+  sides=sides||6;const result=1+Math.floor(Math.random()*sides);
+  /* Insert overlay; animate; then fire cb(result) */
+  try{
+    const ov=document.createElement('div');ov.className='fx-dice-overlay';
+    ov.innerHTML='<div class="fx-die fx-die-rolling"><span class="fx-die-face">?</span></div><div class="fx-die-lbl">'+(reason||'Rolling d'+sides)+'</div>';
+    document.body.appendChild(ov);
+    let tick=0;const id=setInterval(()=>{
+      tick++;
+      ov.querySelector('.fx-die-face').textContent=1+Math.floor(Math.random()*sides);
+      if(tick>=14){clearInterval(id);
+        ov.querySelector('.fx-die').classList.remove('fx-die-rolling');
+        ov.querySelector('.fx-die').classList.add('fx-die-settled');
+        ov.querySelector('.fx-die-face').textContent=result;
+        setTimeout(()=>{try{ov.remove();}catch(e){}cb&&cb(result);},900);}
+    },70);
+  }catch(e){cb&&cb(result);}
+  return result;
+}
+
+/* Cross-trigger: any time a card moves from hand to grave (i.e., a discard),
+   walk all active board cards looking for an onAnyDiscard handler. */
+function fireDiscardHooks(gp,discarderPid,uids){
+  if(!uids||!uids.length)return;
+  allBoard(gp).forEach(u=>{const i=gp.inst[u];if(!i)return;const c=CARDS[i.cid];
+    if(c&&c.onAnyDiscard)c.onAnyDiscard(gp,{pid:i.owner,src:u,discarderPid,discardedUids:uids});});
+}
+
+/* Effective attack cost: starts from c.atkCost, then walks ally cards to apply
+   modifiers (Effin' Slingshot reduces by 1, Dreyver reduces Synth ally costs by 1,
+   EVee reduces Survivor ally costs by 1, Trouble Forerunner +1 to OTHER allies). */
+function effectiveAtkCost(gp,uid){
+  const i=gp.inst[uid];if(!i)return 0;const c=CARDS[i.cid];if(!c)return 0;
+  let cost=c.atkCost||0;
+  /* Override from Flecks-style "base cost becomes ①" */
+  if(i._costOverride!==undefined&&i._costOverride!==null)cost=i._costOverride;
+  const pid=i.owner;
+  /* Wielded Effin' Slingshot: -1 atk cost (id match) */
+  (i.wielded||[]).forEach(wu=>{const wc=CARDS[gp.inst[wu].cid];
+    if(wc&&wc.id==='render-mq82wrmk')cost-=1;
+    /* Wielded weapons can add a cost modifier on the wielder (Mayhem Fist +1) */
+    if(wc&&wc.wielderAtkCostMod)cost+=wc.wielderAtkCostMod;
+  });
+  /* Sky, Unlikely Champion: cost -1 per Survivor Fighter on your team */
+  if(c.id==='render-mq83m92b'){
+    const surv=myFighters(gp,pid).filter(u=>(CARDS[gp.inst[u].cid]||{}).faction==='survivor').length;
+    cost-=surv;
+  }
+  /* Allies' static cost modifiers */
+  gp.p[pid].board.concat([gp.p[pid].boss]).forEach(au=>{
+    if(!au||au===uid)return;const ai=gp.inst[au];if(!ai)return;const ac=CARDS[ai.cid];if(!ac)return;
+    if(ac.atkCostModForAlly){cost+=ac.atkCostModForAlly(gp,uid,au);}
+  });
+  /* Trouble Forerunner: any opposing Trouble adds +1 */
+  eachOpponent(gp,pid,oppPid=>{
+    gp.p[oppPid].board.concat([gp.p[oppPid].boss]).forEach(u=>{
+      if(u&&(CARDS[(gp.inst[u]||{}).cid]||{}).id==='render-mq83senr')cost+=1;
+    });
+  });
+  return Math.max(0,cost);
+}
+
+/* Untargetability filter — runs in validDefenders to filter out untargetable units. */
+function isUntargetable(gp,uid,attackerPid){
+  const i=gp.inst[uid];if(!i)return false;const c=CARDS[i.cid];if(!c)return false;
+  /* Seeya: untargetable if 5+ Fighters on team */
+  if(c.id==='render-mq83jdnu'&&myFighters(gp,i.owner).length>=5)return true;
+  /* Zanni: can't be attacked */
+  if(c.id==='render-mq83wcyl')return true;
+  /* Flank: can't be attacked if 4+ Fighters on team */
+  if(c.id==='render-mq82yz0l'&&myFighters(gp,i.owner).length>=4)return true;
+  /* Tantrum: can't be attacked if Whump! is alive on team */
+  if(c.id==='render-mq83ph11'){
+    const hasWhump=gp.p[i.owner].board.some(u=>(CARDS[(gp.inst[u]||{}).cid]||{}).id==='render-mq83vajo'&&gp.inst[u].hp>0);
+    if(hasWhump)return true;
+  }
+  return false;
+}
+
+/* When a unit is attacked (declared target), allow it to react. */
+function fireOnAttacked(gp,defUid,atkUid){
+  const di=gp.inst[defUid];if(!di)return;const dc=CARDS[di.cid];
+  if(dc&&dc.onAttacked)dc.onAttacked(gp,{pid:di.owner,src:defUid,attacker:atkUid});
+}
+
+/* Visual: floating damage number above a card */
+function showDamageNumber(uid,amt,kind){
+  try{
+    const el=document.querySelector('[data-uid="'+uid+'"]');if(!el)return;
+    const fx=document.createElement('div');fx.className='fx-damage '+(kind||'dmg');
+    fx.textContent=(amt>0&&kind==='heal'?'+':'')+amt;
+    const r=el.getBoundingClientRect();
+    fx.style.left=(r.left+r.width/2)+'px';fx.style.top=(r.top+r.height*0.25)+'px';
+    document.body.appendChild(fx);
+    setTimeout(()=>{try{fx.remove();}catch(e){}},1100);
+  }catch(e){}
+}
+
+/* Visual: lightning-flash line from attacker to defender on attack. */
+function showAttackFlash(atkUid,defUid){
+  try{
+    const a=document.querySelector('[data-uid="'+atkUid+'"]');
+    const d=document.querySelector('[data-uid="'+defUid+'"]');
+    if(!a||!d)return;
+    const ar=a.getBoundingClientRect(),dr=d.getBoundingClientRect();
+    const ax=ar.left+ar.width/2,ay=ar.top+ar.height/2;
+    const dx=dr.left+dr.width/2,dy=dr.top+dr.height/2;
+    const len=Math.hypot(dx-ax,dy-ay);const ang=Math.atan2(dy-ay,dx-ax)*180/Math.PI;
+    const fx=document.createElement('div');fx.className='fx-attack-line';
+    fx.style.left=ax+'px';fx.style.top=ay+'px';
+    fx.style.width=len+'px';fx.style.transform='rotate('+ang+'deg)';
+    document.body.appendChild(fx);
+    d.classList.add('fx-shake');
+    setTimeout(()=>{try{fx.remove();d.classList.remove('fx-shake');}catch(e){}},520);
+  }catch(e){}
+}
