@@ -1,5 +1,6 @@
 /* ═══════════════════════════════════════════════════════════════
-   CATACLYSM ARCADE — STYLESHEET
+   CATACLYSM ARCADE — COMPLETE MASTER STYLESHEET
+   TCG Arena
 ═══════════════════════════════════════════════════════════════ */
 @import url('https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Bebas+Neue&family=Share+Tech+Mono&display=swap');
 
@@ -198,6 +199,25 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
 .hand-pile { border-color: rgba(0,255,204,0.35); background: linear-gradient(135deg, #052a25 0%, #021816 50%, #052a25 100%); }
 .hand-pile::before { background: radial-gradient(circle at center, rgba(0,255,204,0.15) 0%, transparent 70%); }
 
+/* Revealed top-of-deck (Hot Mike) */
+.pile-revealed {
+  position: relative; width: 36px; height: 50px;
+  border: 2px solid var(--ap); border-radius: 4px; overflow: hidden;
+  cursor: pointer; flex-shrink: 0;
+  box-shadow: 0 0 12px rgba(240,180,41,0.5);
+  animation: pile-rev-pulse 2s infinite;
+}
+@keyframes pile-rev-pulse { 0%,100% { box-shadow: 0 0 10px rgba(240,180,41,0.4);} 50% { box-shadow: 0 0 18px rgba(240,180,41,0.8);} }
+.pile-revealed-img, .pile-revealed-img-fb {
+  width: 36px; height: 50px; object-fit: cover; display: block;
+}
+.pile-revealed-lbl {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  background: rgba(0,0,0,0.85); color: var(--ap);
+  font-family: 'Bebas Neue', cursive; font-size: 7px; text-align: center;
+  letter-spacing: 0.18em; padding: 1px 0;
+}
+
 .ps-coins { flex-shrink: 0; }
 .coin-badge { background: rgba(240,180,41,0.15); border: 1px solid var(--ap); color: var(--ap); padding: 5px 12px; font-family: 'Bebas Neue', cursive; font-size: 15px; border-radius: 4px; box-shadow: 0 0 10px rgba(240,180,41,0.2); white-space: nowrap; }
 .coin-badge.opp { opacity: 0.75; }
@@ -246,16 +266,112 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
   background: linear-gradient(180deg, transparent, rgba(255,255,255,0.18), transparent);
 }
 
-/* ── HAND STRIP (fan with overlap) ── */
+/* ── HAND STRIP (Hearthstone-style curved fan) ── */
 .hand-strip {
   display: flex; justify-content: center; align-items: flex-end;
-  min-height: 180px; padding: 0 20px 8px;
+  min-height: 200px; padding: 14px 24px 8px;
   background: linear-gradient(0deg, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.2) 70%, transparent 100%);
   position: relative; z-index: 20;
   overflow-x: auto; overflow-y: visible;
+  perspective: 1200px;
 }
-.hand-strip .hcard { margin-left: -28px; box-shadow: -6px 6px 18px rgba(0,0,0,0.7); }
+.hand-strip .hcard {
+  margin-left: -34px;
+  transition: transform 0.28s cubic-bezier(0.2,0.8,0.2,1), box-shadow 0.22s ease, border-color 0.2s ease;
+  transform-origin: 50% 130%;
+  box-shadow: -6px 6px 18px rgba(0,0,0,0.7);
+}
 .hand-strip .hcard:first-child { margin-left: 0; }
+/* Per-card rotation/arc derived via JS data attribute (set in renderPlay hand build) */
+.hand-strip .hcard[data-hand-pos] { transform: rotate(var(--hand-rot, 0deg)) translateY(var(--hand-lift, 0px)); }
+.hand-strip .hcard:not(.unplayable):hover {
+  transform: translateY(-50px) scale(1.18) rotate(0deg);
+  z-index: 100;
+  border-color: var(--teal);
+  box-shadow: 0 22px 40px rgba(0,0,0,0.9), var(--playable-glow);
+}
+
+/* ── DICE OVERLAY ── */
+.fx-dice-overlay {
+  position: fixed; inset: 0; z-index: 2000;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.55); backdrop-filter: blur(4px);
+  pointer-events: none;
+  animation: fade-in 0.18s ease;
+}
+.fx-die {
+  width: 130px; height: 130px;
+  background: linear-gradient(145deg, #f9f4e0 0%, #d3c79a 70%, #b8a96a 100%);
+  border: 3px solid #2a1a08; border-radius: 18px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Black Ops One', cursive; font-size: 64px; color: #2a1a08;
+  box-shadow: 0 20px 48px rgba(0,0,0,0.75), inset 0 -8px 16px rgba(0,0,0,0.18), inset 0 8px 16px rgba(255,255,255,0.4);
+}
+.fx-die-face { display: block; line-height: 1; }
+@keyframes die-tumble {
+  0%   { transform: rotate3d(1,1,0, 0deg)   scale(1); }
+  25%  { transform: rotate3d(1,1,1, 270deg) scale(1.12); }
+  50%  { transform: rotate3d(1,0,1, 540deg) scale(0.94); }
+  75%  { transform: rotate3d(0,1,1, 800deg) scale(1.08); }
+  100% { transform: rotate3d(1,1,1, 1080deg) scale(1); }
+}
+.fx-die-rolling { animation: die-tumble 1s linear infinite; }
+.fx-die-settled {
+  animation: die-land 0.5s cubic-bezier(0.18,1.4,0.4,1) forwards;
+  box-shadow: 0 20px 48px rgba(0,0,0,0.8), 0 0 40px rgba(240,180,41,0.7), inset 0 -8px 16px rgba(0,0,0,0.18), inset 0 8px 16px rgba(255,255,255,0.4);
+}
+@keyframes die-land { 0% { transform: scale(0.6); opacity: 0; } 60% { transform: scale(1.18); opacity: 1; } 100% { transform: scale(1.05); opacity: 1; } }
+.fx-die-lbl {
+  margin-top: 14px; font-family: 'Bebas Neue', cursive; font-size: 14px;
+  letter-spacing: 0.25em; color: var(--ap);
+  background: rgba(0,0,0,0.7); padding: 6px 14px; border-radius: 4px;
+  border: 1px solid rgba(240,180,41,0.5);
+}
+
+/* ── FLOATING DAMAGE / HEAL NUMBERS ── */
+.fx-damage {
+  position: fixed; z-index: 1500; pointer-events: none;
+  font-family: 'Black Ops One', cursive; font-size: 36px;
+  text-shadow: 2px 2px 0 #000, 0 0 12px rgba(0,0,0,0.9);
+  animation: fx-dmg-rise 1.1s cubic-bezier(0.2,0.8,0.2,1) forwards;
+  transform: translate(-50%, 0);
+}
+.fx-damage.dmg { color: var(--red); }
+.fx-damage.heal { color: var(--su); }
+@keyframes fx-dmg-rise {
+  0%   { opacity: 0; transform: translate(-50%, 10px) scale(0.6); }
+  20%  { opacity: 1; transform: translate(-50%, -8px) scale(1.25); }
+  80%  { opacity: 1; transform: translate(-50%, -58px) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -86px) scale(0.9); }
+}
+
+/* ── ATTACK LIGHTNING LINE ── */
+.fx-attack-line {
+  position: fixed; z-index: 1400; pointer-events: none;
+  height: 6px; transform-origin: 0 50%;
+  background: linear-gradient(90deg, rgba(255,180,40,0) 0%, rgba(255,180,40,0.9) 20%, #fff 50%, rgba(255,80,40,0.9) 80%, rgba(255,80,40,0) 100%);
+  box-shadow: 0 0 16px 4px rgba(255,140,40,0.6), 0 0 32px 8px rgba(255,80,40,0.35);
+  animation: fx-bolt 0.5s ease-out forwards;
+  border-radius: 4px;
+}
+@keyframes fx-bolt {
+  0%   { opacity: 0; height: 2px; filter: brightness(2); }
+  30%  { opacity: 1; height: 8px; filter: brightness(1.6); }
+  70%  { opacity: 1; height: 6px; filter: brightness(1.2); }
+  100% { opacity: 0; height: 2px; }
+}
+@keyframes fx-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-6px); }
+  40% { transform: translateX(5px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(3px); }
+}
+.fx-shake { animation: fx-shake 0.4s; }
+
+/* GM panel: manual die-roll row */
+.gm-dice-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.gm-dice-row .gm-mini { flex: 1; min-width: 50px; }
 
 /* ════════════════════════════════════════════════════════════
    CARD ARCHITECTURE — 120×168 TCG ratio, art-focused
@@ -427,6 +543,10 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
 .action-opt:hover { background: var(--ap); color: #000; transform: scale(1.04); }
 
 /* ════════════════════════════════════════════════════════════
+   HUD — corner pillar + game log
+/* ════════════════════════════════════════════════════════════
+   MODALS — zoom (full card only), help, winner
+════════════════════════════════════════════════════════════ */
 .zoom-overlay, .overlay {
   position: fixed; inset: 0; background: rgba(0,0,0,0.92);
   backdrop-filter: blur(10px);
@@ -436,7 +556,7 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
 }
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
 
-/* Full-card zoom */
+/* Full-card zoom: image only, no manual text — the card has it all */
 .zoom-full {
   position: relative; max-width: 92vw; max-height: 92vh;
   display: flex; align-items: center; justify-content: center;
@@ -476,6 +596,30 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
   backdrop-filter: blur(6px); box-shadow: 0 4px 14px rgba(0,0,0,0.5);
 }
 .log-fab:hover { background: rgba(255,109,35,0.18); border-color: var(--or); }
+
+/* Dice button always visible */
+.dice-fab-group {
+  position: absolute; bottom: 244px; left: 14px; z-index: 18;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.dice-fab {
+  background: linear-gradient(145deg, rgba(240,180,41,0.18), rgba(240,180,41,0.06));
+  border: 1px solid var(--ap); color: var(--ap);
+  font-family: 'Bebas Neue', cursive; font-size: 13px; letter-spacing: 0.12em;
+  padding: 8px 12px; border-radius: 6px; cursor: pointer;
+  backdrop-filter: blur(6px); box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+  transition: background 0.15s, transform 0.1s;
+  min-width: 60px;
+}
+.dice-fab:hover { background: rgba(240,180,41,0.32); transform: translateY(-2px); }
+.dice-fab:active { transform: translateY(0); }
+.dice-fab.small { font-size: 11px; padding: 5px 10px; opacity: 0.8; }
+.dice-fab.small:hover { opacity: 1; }
+
+@media (max-width: 760px) {
+  .dice-fab-group { bottom: 200px; left: 8px; }
+  .dice-fab { font-size: 11px; padding: 6px 8px; }
+}
 
 .log-panel {
   position: absolute; bottom: 200px; left: 14px; width: 280px;
@@ -550,8 +694,229 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
 .progress-fill { height: 100%; background: linear-gradient(90deg, var(--or), #ffaa60); border-radius: 3px; transition: width 0.3s; }
 
 /* ════════════════════════════════════════════════════════════
-   DECK BUILDER — full-card-image grid (Hearthstone style)
+   MULLIGAN PICKER (partial mulligan per official rules)
 ════════════════════════════════════════════════════════════ */
+.mull-modal {
+  background: var(--bg-board); border: 2px solid var(--or); border-radius: 12px;
+  width: 660px; max-width: 95vw; max-height: 88vh;
+  display: flex; flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.85), 0 0 40px rgba(255,109,35,0.3);
+  animation: pop-in 0.22s cubic-bezier(0.2,0.8,0.2,1);
+}
+.mull-head {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  padding: 16px 22px; border-bottom: 1px solid var(--border-soft);
+  background: linear-gradient(180deg, rgba(255,109,35,0.1), transparent);
+}
+.mull-title {
+  font-family: 'Black Ops One', cursive; font-size: 22px; color: var(--or); line-height: 1.1; margin-bottom: 4px;
+}
+.mull-sub { font-size: 11px; color: rgba(232,224,208,0.7); line-height: 1.5; max-width: 480px; }
+.mull-body {
+  flex: 1; overflow-y: auto; padding: 18px 22px;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 12px;
+}
+.mull-card {
+  background: var(--bg-card); border: 2px solid;
+  border-radius: 8px; overflow: hidden;
+  cursor: pointer; position: relative;
+  transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+  display: flex; flex-direction: column;
+}
+.mull-card:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0,0,0,0.6); }
+.mull-card.picked {
+  box-shadow: 0 0 22px rgba(240,180,41,0.5);
+}
+.mull-card.picked .mull-card-img { opacity: 0.45; }
+.mull-card-img, .mull-card-img-fb {
+  width: 100%; aspect-ratio: 5/7; object-fit: contain;
+  display: block; background: #000;
+}
+.mull-card-cap {
+  padding: 6px 8px; font-family: 'Bebas Neue', cursive;
+  font-size: 11px; letter-spacing: 0.08em; color: var(--cr);
+  text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  background: rgba(0,0,0,0.6); border-top: 1px solid var(--border-soft);
+}
+.mull-card-x {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%) rotate(-15deg);
+  background: var(--ap); color: #000;
+  font-family: 'Black Ops One', cursive; font-size: 13px;
+  padding: 6px 14px; border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.7);
+  letter-spacing: 0.15em;
+  pointer-events: none;
+}
+.mull-foot {
+  padding: 14px 22px; display: flex; gap: 10px; align-items: center;
+  border-top: 1px solid var(--border-soft); background: rgba(0,0,0,0.3);
+}
+.mull-stat {
+  font-family: 'Bebas Neue', cursive; font-size: 13px;
+  color: var(--or); letter-spacing: 0.15em;
+}
+
+@media (max-width: 760px) {
+  .mull-modal { width: 100%; max-height: 95vh; }
+  .mull-body { grid-template-columns: 1fr 1fr; }
+}
+.preset-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+  margin-bottom: 22px;
+}
+.preset-tile {
+  background: var(--bg-card);
+  border: 2px solid rgba(255,109,35,0.22);
+  border-radius: 10px; overflow: hidden;
+  display: flex; flex-direction: column;
+  transition: border-color 0.18s, transform 0.18s, box-shadow 0.18s;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.45);
+}
+.preset-tile:hover {
+  border-color: var(--or);
+  transform: translateY(-3px);
+  box-shadow: 0 10px 28px rgba(0,0,0,0.65), 0 0 22px rgba(255,109,35,0.2);
+}
+.preset-boss-img, .preset-boss-img-fb {
+  width: 100%; aspect-ratio: 5/7; object-fit: contain; display: block; background: #000;
+  border-bottom: 1px solid var(--border-soft);
+}
+.preset-body { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 8px; }
+.preset-name {
+  font-family: 'Black Ops One', cursive; font-size: 17px; color: var(--cr);
+  line-height: 1.15;
+}
+.preset-sub {
+  font-family: 'Bebas Neue', cursive; font-size: 12px; color: var(--or);
+  letter-spacing: 0.15em;
+}
+.preset-facs { display: flex; gap: 6px; flex-wrap: wrap; }
+.preset-fac {
+  font-family: 'Bebas Neue', cursive; font-size: 10px; letter-spacing: 0.2em;
+  padding: 2px 8px; border: 1px solid; border-radius: 3px;
+}
+.preset-fac.fc-synth    { color: var(--or); border-color: var(--or); }
+.preset-fac.fc-mystic   { color: var(--my); border-color: var(--my); }
+.preset-fac.fc-shifter  { color: var(--sh); border-color: var(--sh); }
+.preset-fac.fc-survivor { color: var(--su); border-color: var(--su); }
+.preset-fac.fc-apex     { color: var(--ap); border-color: var(--ap); }
+.preset-tagline {
+  font-size: 11px; color: rgba(232,224,208,0.7); line-height: 1.55;
+  font-style: italic;
+}
+.preset-actions { display: flex; gap: 8px; margin-top: 4px; }
+.preset-actions .btn { flex: 1; }
+.preset-pick { letter-spacing: 0.12em; }
+
+/* Preset detail modal */
+.preset-detail {
+  background: var(--bg-board); border: 2px solid var(--or); border-radius: 12px;
+  width: 680px; max-width: 95vw; max-height: 90vh;
+  display: flex; flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.85), 0 0 50px rgba(255,109,35,0.3);
+  animation: pop-in 0.22s cubic-bezier(0.2,0.8,0.2,1);
+}
+.preset-detail-head {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  padding: 16px 22px; border-bottom: 1px solid var(--border-soft);
+  background: linear-gradient(180deg, rgba(255,109,35,0.1), transparent);
+}
+.preset-detail-name {
+  font-family: 'Black Ops One', cursive; font-size: 24px;
+  color: var(--or); line-height: 1.1; margin-bottom: 4px;
+}
+.preset-detail-sub {
+  font-family: 'Bebas Neue', cursive; font-size: 13px;
+  color: var(--cr); letter-spacing: 0.2em;
+}
+.preset-detail-body {
+  flex: 1; overflow-y: auto; padding: 18px 22px;
+  display: flex; flex-direction: column; gap: 18px;
+}
+.preset-detail-row {
+  display: grid; grid-template-columns: 140px 1fr; gap: 18px;
+  align-items: start;
+}
+.preset-detail-boss { text-align: center; }
+.preset-detail-boss-img {
+  width: 140px; aspect-ratio: 5/7; object-fit: contain;
+  display: block; background: #000; border-radius: 6px;
+  border: 2px solid var(--or); box-shadow: 0 0 18px rgba(255,109,35,0.3);
+}
+.preset-detail-boss-cap {
+  margin-top: 6px; font-family: 'Bebas Neue', cursive; font-size: 11px;
+  color: var(--or); letter-spacing: 0.18em;
+}
+.preset-detail-txt .pd-h {
+  font-family: 'Bebas Neue', cursive; font-size: 12px;
+  color: var(--or); letter-spacing: 0.25em;
+  margin-bottom: 6px; margin-top: 10px;
+}
+.preset-detail-txt .pd-h:first-child { margin-top: 0; }
+.preset-detail-txt .pd-p {
+  font-size: 12px; color: rgba(232,224,208,0.8);
+  line-height: 1.7;
+}
+.preset-detail-txt .pd-list {
+  list-style: none; padding: 0; margin: 0;
+}
+.preset-detail-txt .pd-list li {
+  font-size: 11.5px; color: rgba(232,224,208,0.75);
+  line-height: 1.65; padding-left: 14px; position: relative;
+  margin-bottom: 4px;
+}
+.preset-detail-txt .pd-list li::before {
+  content: '\u00bb'; position: absolute; left: 0; color: var(--or);
+}
+
+.pd-section { border-top: 1px solid var(--border-soft); padding-top: 14px; }
+.pd-section-h {
+  font-family: 'Bebas Neue', cursive; font-size: 12px;
+  color: var(--or); letter-spacing: 0.3em; margin-bottom: 10px;
+}
+.pd-cards {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 6px;
+}
+.pd-card {
+  background: var(--bg-card); border-left: 3px solid;
+  padding: 6px 10px; border-radius: 3px; cursor: pointer;
+  display: flex; flex-direction: column; gap: 1px;
+  transition: background 0.12s;
+  position: relative;
+}
+.pd-card:hover { background: rgba(255,109,35,0.06); }
+.pd-card-q {
+  position: absolute; top: 4px; right: 6px;
+  font-family: 'Black Ops One', cursive; font-size: 11px;
+  color: var(--cr);
+}
+.pd-card-name {
+  font-family: 'Bebas Neue', cursive; font-size: 12px;
+  letter-spacing: 0.04em; padding-right: 24px;
+}
+.pd-card-meta {
+  font-size: 9px; color: var(--dim);
+  letter-spacing: 0.08em;
+}
+.preset-detail-foot {
+  padding: 14px 22px;
+  display: flex; gap: 10px;
+  border-top: 1px solid var(--border-soft);
+  background: rgba(0,0,0,0.3);
+}
+
+@media (max-width: 760px) {
+  .preset-grid { grid-template-columns: 1fr; }
+  .preset-detail { width: 100%; max-height: 95vh; }
+  .preset-detail-row { grid-template-columns: 100px 1fr; gap: 12px; }
+  .preset-detail-boss-img { width: 100px; }
+  .pd-cards { grid-template-columns: 1fr 1fr; }
+}
 .build-summary {
   position: sticky; top: 60px; z-index: 10;
   background: rgba(255,109,35,0.08); border: 1px solid rgba(255,109,35,0.25);
@@ -676,8 +1041,76 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
 .dtile-info:hover { background: var(--or); color: #000; border-color: var(--or); }
 
 /* ════════════════════════════════════════════════════════════
-   GM MODE — judge / override panel
+   PILE VIEWER — deck/discard browse with search
 ════════════════════════════════════════════════════════════ */
+.pile { cursor: pointer; }
+.pile:active { transform: scale(0.95); }
+
+.pile-view {
+  background: var(--bg-board); border: 2px solid var(--or); border-radius: 10px;
+  width: 480px; max-width: 94vw; max-height: 86vh;
+  display: flex; flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.85), 0 0 40px rgba(255,109,35,0.25);
+  animation: pop-in 0.22s cubic-bezier(0.2,0.8,0.2,1);
+}
+.pile-view-head {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  padding: 14px 18px; border-bottom: 1px solid var(--border-soft);
+  background: linear-gradient(180deg, rgba(255,109,35,0.08), transparent);
+}
+.pile-view-title {
+  font-family: 'Black Ops One', cursive; font-size: 18px; color: var(--or); margin-bottom: 2px; line-height: 1.1;
+}
+.pile-view-sub {
+  font-family: 'Bebas Neue', cursive; font-size: 11px; color: var(--dim); letter-spacing: 0.15em;
+}
+.pile-view-x {
+  background: none; border: none; color: var(--dim); font-size: 20px;
+  cursor: pointer; padding: 0 4px;
+}
+.pile-view-x:hover { color: var(--cr); }
+
+.pile-view-search {
+  padding: 10px 14px; border-bottom: 1px solid var(--border-soft);
+  display: flex; gap: 8px; align-items: center;
+}
+.pile-view-search input { flex: 1; }
+
+.pile-view-body {
+  flex: 1; overflow-y: auto; padding: 8px 12px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.pv-row {
+  display: flex; gap: 10px; padding: 8px;
+  background: var(--bg-card); border: 1px solid var(--border-soft);
+  border-radius: 6px; transition: border-color 0.15s, background 0.15s;
+}
+.pv-row:hover { border-color: rgba(255,109,35,0.4); background: rgba(255,109,35,0.04); }
+.pv-thumb {
+  width: 56px; flex-shrink: 0; border-radius: 4px; overflow: hidden;
+  cursor: pointer; background: #000;
+}
+.pv-thumb-img, .pv-thumb-img-fb {
+  width: 56px; aspect-ratio: 5/7; object-fit: contain; display: block;
+}
+.pv-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.pv-name { font-family: 'Black Ops One', cursive; font-size: 13px; line-height: 1.2; }
+.pv-meta { font-size: 10px; color: var(--dim); letter-spacing: 0.06em; }
+.pv-actions { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+
+.pv-empty {
+  text-align: center; padding: 30px; color: var(--dim); font-style: italic;
+}
+.pile-view-foot {
+  padding: 10px 14px; font-size: 10px; color: var(--dim);
+  border-top: 1px solid var(--border-soft); line-height: 1.55;
+}
+
+@media (max-width: 760px) {
+  .pile-view { width: 100%; max-height: 90vh; }
+  .pv-thumb { width: 44px; }
+  .pv-thumb-img, .pv-thumb-img-fb { width: 44px; }
+}
 .btn.gm-on {
   background: var(--ap); color: #000; border-color: var(--ap);
   box-shadow: 0 0 12px rgba(240,180,41,0.45);
