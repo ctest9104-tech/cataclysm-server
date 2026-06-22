@@ -1,4 +1,4 @@
-/* CATACLYSM ARCADE — ONLINE TCG v2.5 | Fixed levels | Card images | All factions */
+/* CATACLYSM ARCADE */
 const SUPABASE_URL='https://mhvtcztuusjuzdjamnfo.supabase.co';
 const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1odnRjenR1dXNqdXpkamFtbmZvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4MzE1MDUsImV4cCI6MjA5NzQwNzUwNX0.b7fq9uditGv3rabTvYeAyGxJxhSAmoVK0TpyfuRBass';
 let _db=null;
@@ -174,17 +174,27 @@ function rollDieVisible(sides,reason,cb){
 }
 
 function transformInstance(gp,uid,maxLevel,opts){
-  const i=gp.inst[uid];if(!i)return;const pid=i.owner;const oldName=(CARDS[i.cid]||{}).name;
+  /* Per official rules R1.0: Transform = "Destroy this Fighter. Reveal cards from the top
+     of your deck until you reveal another Fighter of the level of that fighter or lower
+     with a different name that is not already in play. Put that fighter into play and
+     then shuffle the revealed cards into your deck." */
+  const i=gp.inst[uid];if(!i)return;
+  const oldC=CARDS[i.cid]||{};
+  const pid=i.owner;const oldName=oldC.name;
+  /* maxLevel defaults to the source Fighter's own level */
+  const cap=(maxLevel!==undefined&&maxLevel!==null)?maxLevel:(oldC.level||0);
+  /* Names already on this player's board ("not already in play") */
+  const onBoard=new Set(gp.p[pid].board.map(u=>{const ii=gp.inst[u];return ii&&CARDS[ii.cid]?CARDS[ii.cid].name:null;}).filter(Boolean));
   destroyInstance(gp,uid,{skipFortify:true});
   const deck=gp.p[pid].deck;const skipped=[];let found=null;
   while(deck.length){
     const u=deck.shift();const c=CARDS[gp.inst[u].cid];
-    if(c&&c.type==='fighter'&&(c.level||1)<=maxLevel&&c.name!==oldName){found=u;break;}
+    if(c&&c.type==='fighter'&&(c.level||1)<=cap&&c.name!==oldName&&!onBoard.has(c.name)){found=u;break;}
     skipped.push(u);
   }
   gp.p[pid].deck=shuffle(deck.concat(skipped));
-  if(found){gp.p[pid].board.push(found);resetInstance(gp,found);fireOnEnter(gp,found,pid);log(gp,'Transform \u2192 '+CARDS[gp.inst[found].cid].name+'.');}
-  else log(gp,'Transform: no eligible Fighter found.');
+  if(found){gp.p[pid].board.push(found);resetInstance(gp,found);fireOnEnter(gp,found,pid);log(gp,'Transform \u2192 '+CARDS[gp.inst[found].cid].name+' (L'+(CARDS[gp.inst[found].cid].level||'?')+' or lower).');}
+  else log(gp,'Transform: no eligible Fighter (L'+cap+' or lower) in deck.');
 }
 function unstunUnit(gp,uid){const i=gp.inst[uid];if(!i)return;i.stunned=false;log(gp,(CARDS[i.cid]||{}).name+' unstunned.');}
 function untapUnit(gp,uid){const i=gp.inst[uid];if(!i)return;i.actedCount=0;log(gp,(CARDS[i.cid]||{}).name+' untapped.');}
@@ -386,13 +396,15 @@ function moveZone(gp,pid,u,from,to){
 }
 function drawN(gp,pid,n){for(let i=0;i<n;i++){const d=gp.p[pid].deck;if(!d.length)continue;gp.p[pid].hand.push(d.shift());}}
 function spendCoins(gp,pid,n){if(gp.p[pid].coins<n)return false;gp.p[pid].coins-=n;return true;}
-function healInst(gp,uid,amt){const i=gp.inst[uid];if(!i)return;const c=CARDS[i.cid];if(!c)return;const before=i.hp;i.hp=Math.min(i.maxHp,i.hp+amt);const real=i.hp-before;if(real>0){log(gp,c.name+' heals '+real+'.');showDamageNumber(uid,real,'heal');}}
+function healInst(gp,uid,amt){const i=gp.inst[uid];if(!i)return;const c=CARDS[i.cid];if(!c)return;const before=i.hp;i.hp=Math.min(i.maxHp,i.hp+amt);const real=i.hp-before;if(real>0){log(gp,c.name+' heals '+real+'.');showDamageNumber(uid,real,'heal');showHealEffect(uid);}}
 function addCounter(gp,uid,type,amt){
   const i=gp.inst[uid];if(!i)return;const c=CARDS[i.cid];
   i.counters=i.counters||{};i.counters[type]=(i.counters[type]||0)+amt;
+  if(amt>0)showCounterEffect(uid);
   if(type==='atk'&&amt>0){const pid=i.owner;(gp.p[pid].board.concat([gp.p[pid].boss])).forEach(u=>{if(u&&gp.inst[u]&&CARDS[gp.inst[u].cid]&&CARDS[gp.inst[u].cid].onCounterPlaced)CARDS[gp.inst[u].cid].onCounterPlaced(gp,pid);});}
   log(gp,(c?c.name:'?')+' gets '+type+' counter ('+(amt>0?'+':'')+amt+').');
 }
+function stunInstance(gp,uid){const i=gp.inst[uid];if(!i)return;i.stunned=true;i.actedCount=99;log(gp,(CARDS[i.cid]||{}).name+' is stunned.');showStunEffect(uid);}
 function createToken(gp,pid,tokenId){const u=newInstance(gp,tokenId,pid);gp.p[pid].board.push(u);log(gp,gp.p[pid].name+' creates '+CARDS[tokenId].name+'.');return u;}
 function wieldWeapon(gp,wUid,fUid){
   const w=gp.inst[wUid];if(!w||!gp.inst[fUid])return;
@@ -434,6 +446,7 @@ function destroyInstance(gp,uid,opts){
     const cands=(gp.p[pid].board.concat([gp.p[pid].boss])).filter(u=>u&&u!==uid&&gp.inst[u]&&!gp.inst[u].fortifiedUnder&&(gp.inst[u].kind==='fighter'||gp.inst[u].kind==='boss')&&gp.inst[u].hp>0);
     if(cands.length){const t=cands[0];gp.inst[t].maxHp+=i.maxHp;gp.inst[t].hp+=i.maxHp;i.fortifiedUnder=t;gp.p[pid].board=gp.p[pid].board.filter(x=>x!==uid);log(gp,c.name+' Fortifies under '+CARDS[gp.inst[t].cid].name+'.');return;}
   }
+  showDestroyEffect(uid);
   if(i.kind==='fighter')gp.fighterLeftThisLevel=true;
   moveZone(gp,pid,uid,'board','grave');
   if(c.onDeath)c.onDeath(gp,{pid});
@@ -535,14 +548,10 @@ function checkWin(gp){
   const left=activePlayers(gp);
   if(left.length<=1&&!gp.winner){gp.winner=left[0]||'draw';log(gp,left[0]?(gp.p[left[0]].name+' wins!'):'Draw!');}
 }
-function transformInstance(gp,uid){
-  const i=gp.inst[uid];if(!i)return;const pid=i.owner;const lvl=CARDS[i.cid].level||0;const origName=CARDS[i.cid].name;
-  destroyInstance(gp,uid,{skipFortify:true});
-  const pool=gp.p[pid].deck.filter(u=>{const c=gp.inst[u]&&CARDS[gp.inst[u].cid];return c&&c.kind==='fighter'&&(c.level||0)<=lvl&&c.name!==origName;});
-  if(!pool.length){log(gp,'Transform found no eligible Fighter.');return;}
-  const pick=pool[Math.floor(Math.random()*pool.length)];
-  gp.p[pid].deck=gp.p[pid].deck.filter(u=>u!==pick);gp.p[pid].board.push(pick);resetInstance(gp,pick);fireOnEnter(gp,pick,pid);
-  gp.p[pid].deck=shuffle(gp.p[pid].deck);log(gp,'Transformed into '+CARDS[gp.inst[pick].cid].name+'.');
+function transformInstance_DEPRECATED_DO_NOT_USE_FALLBACK(gp,uid){
+  /* Superseded by the rules-compliant transformInstance defined earlier in this file.
+     Kept as a stub so any stray callers won't crash. */
+  console.warn('Old transformInstance fallback hit — should never run.');
 }
 
 /* COMBAT */
@@ -633,8 +642,8 @@ window.joinRoom=async function(){
 window.startBuild=async function(){await act(r=>{r.phase='build';});};
 window.toggleFaction=async function(f){await act(r=>{const me=r.players.find(p=>p.id===S.myId);const i=me.factions.indexOf(f);if(i>=0)me.factions.splice(i,1);else{if(me.factions.length>=2)me.factions.shift();me.factions.push(f);}me.bossId=null;me.list={};});};
 window.pickBoss=async function(cid){await act(r=>{r.players.find(p=>p.id===S.myId).bossId=cid;});};
-window.adjustCard=async function(cid,delta){await act(r=>{const me=r.players.find(p=>p.id===S.myId);const cur=me.list[cid]||0;const next=Math.max(0,Math.min(3,cur+delta));const total=Object.entries(me.list).reduce((s,[k,v])=>s+(k===cid?0:v),0)+next;if(next>cur&&total>40)return;me.list[cid]=next;if(!me.list[cid])delete me.list[cid];});};
-window.markReady=async function(){await act(r=>{const me=r.players.find(p=>p.id===S.myId);const total=Object.values(me.list).reduce((a,b)=>a+b,0);if(!me.bossId)return alert('Pick a Boss first.');if(total!==40)return alert('You need exactly 40 non-Boss cards (currently '+total+').');me.ready=true;});};
+window.adjustCard=async function(cid,delta){await act(r=>{const me=r.players.find(p=>p.id===S.myId);const cur=me.list[cid]||0;const next=Math.max(0,Math.min(3,cur+delta));me.list[cid]=next;if(!me.list[cid])delete me.list[cid];});};
+window.markReady=async function(){await act(r=>{const me=r.players.find(p=>p.id===S.myId);const total=Object.values(me.list).reduce((a,b)=>a+b,0);if(!me.bossId)return alert('Pick a Boss first.');if(total<40)return alert('You need at least 40 non-Boss cards (currently '+total+'). Max 3 copies per card. No upper limit on deck size.');me.ready=true;});};
 window.unready=async function(){await act(r=>{r.players.find(p=>p.id===S.myId).ready=false;});};
 window.beginGame=async function(){await act(r=>{startGame(r);});};
 window.doMulligan=function(){
@@ -1033,8 +1042,9 @@ function renderBuild(){
       ${artImg(b.id,'boss-tile-img')}
       <div class="boss-tile-cap">${b.name}${me.bossId===b.id?' <span style="color:var(--ap)">&#10003;</span>':''}</div>
     </div>`;});
-    h+='</div><div class="section-h">3. BUILD 40 CARDS (MAX 3 COPIES EACH)</div>';
-    h+=`<div class="build-summary">${total}/40 cards &nbsp;&#8226;&nbsp; ${Object.values(me.list||{}).filter(v=>v>0).length} unique cards<div class="progress-bar"><div class="progress-fill" style="width:${Math.min(100,total/40*100)}%"></div></div></div>`;
+    h+='</div><div class="section-h">3. BUILD AT LEAST 40 CARDS (MAX 3 COPIES EACH \u2014 NO UPPER LIMIT)</div>';
+    const meetMin=total>=40;
+    h+=`<div class="build-summary${meetMin?' ready':''}">${total} cards &nbsp;&#8226;&nbsp; ${Object.values(me.list||{}).filter(v=>v>0).length} unique &nbsp;&#8226;&nbsp; <span style="color:${meetMin?'var(--su)':'var(--dim)'}">${meetMin?'\u2713 meets 40-card minimum':'need '+(40-total)+' more'}</span><div class="progress-bar"><div class="progress-fill" style="width:${Math.min(100,total/40*100)}%"></div></div></div>`;
     h+='<div class="deck-grid">';
     nonBoss.forEach(c=>{const n=(me.list||{})[c.id]||0;
       h+=`<div class="dtile${n>0?' has':''}${n>=3?' max':''}" oncontextmenu="showZoom('${c.id}');return false" title="${c.name} \u2014 right-click for details">
@@ -1064,7 +1074,7 @@ function renderPlay(){
   const myP=gp.p[S.myId];
   const opps=Object.keys(gp.p).filter(pid=>pid!==S.myId);
 
-  let h=`<div id="game-table">`;
+  let h=`<div id="game-table" data-opp-count="${opps.length}">`;
 
   /* Opponent strips + fields */
   opps.forEach(pid=>{
@@ -1091,8 +1101,21 @@ function renderPlay(){
   /* Pending / attack action bar */
   if(pend){
     h+=`<div class="action-bar">&#9650; ${pend.prompt}`;
-    if(pend.kind==='pick'||pend.kind==='discard')
-      h+=`<div class="action-opts">${(pend.options||[]).map(o=>`<button class="action-opt" onclick="resolvePending('${(o.value||'').replace(/'/g,"&#39;")}')">${o.label}</button>`).join('')}</div>`;
+    if(pend.kind==='pick'||pend.kind==='discard'){
+      /* Detect: are the option values card UIDs we can show thumbnails for? */
+      const opts=pend.options||[];
+      const cardOpts=opts.filter(o=>o.value&&gp.inst[o.value]);
+      const plainOpts=opts.filter(o=>!o.value||!gp.inst[o.value]);
+      if(cardOpts.length){
+        /* Render as a card-search grid with art */
+        h+=`<div class="action-card-grid">${cardOpts.map(o=>{const u=o.value;const i=gp.inst[u];const c=CARDS[i.cid]||{};const fc=FCOL[c.faction]||'#888';return `<div class="action-card-pick" style="border-color:${fc}80" onclick="resolvePending('${u}')" title="${c.name||''}">${artImg(i.cid,'action-card-pick-img')}<div class="action-card-pick-cap">${(c.name||'?').slice(0,20)}</div></div>`;}).join('')}</div>`;
+      }
+      if(plainOpts.length){
+        h+=`<div class="action-opts">${plainOpts.map(o=>`<button class="action-opt" onclick="resolvePending('${(o.value||'').replace(/'/g,"&#39;")}')">${o.label}</button>`).join('')}</div>`;
+      }
+      if(!cardOpts.length&&!plainOpts.length)
+        h+=`<div class="action-opts">${opts.map(o=>`<button class="action-opt" onclick="resolvePending('${(o.value||'').replace(/'/g,"&#39;")}')">${o.label}</button>`).join('')}</div>`;
+    }
     h+=`</div>`;
   }
   if(S.attackPick&&gp.inst[S.attackPick]){
@@ -1498,21 +1521,114 @@ function showDamageNumber(uid,amt,kind){
   }catch(e){}
 }
 
-/* Visual: lightning-flash line from attacker to defender on attack. */
+/* Visual: dramatic dual-element attack effect.
+   1. A bright lightning beam from attacker to defender
+   2. An impact burst at the target with shake
+   Deferred to next animation frame so DOM is stable after any re-render. */
 function showAttackFlash(atkUid,defUid){
-  try{
-    const a=document.querySelector('[data-uid="'+atkUid+'"]');
-    const d=document.querySelector('[data-uid="'+defUid+'"]');
-    if(!a||!d)return;
-    const ar=a.getBoundingClientRect(),dr=d.getBoundingClientRect();
-    const ax=ar.left+ar.width/2,ay=ar.top+ar.height/2;
-    const dx=dr.left+dr.width/2,dy=dr.top+dr.height/2;
-    const len=Math.hypot(dx-ax,dy-ay);const ang=Math.atan2(dy-ay,dx-ax)*180/Math.PI;
-    const fx=document.createElement('div');fx.className='fx-attack-line';
-    fx.style.left=ax+'px';fx.style.top=ay+'px';
-    fx.style.width=len+'px';fx.style.transform='rotate('+ang+'deg)';
-    document.body.appendChild(fx);
-    d.classList.add('fx-shake');
-    setTimeout(()=>{try{fx.remove();d.classList.remove('fx-shake');}catch(e){}},520);
-  }catch(e){}
+  /* Capture positions IMMEDIATELY so even if cards move/re-render, we have coords */
+  const a=document.querySelector('[data-uid="'+atkUid+'"]');
+  const d=document.querySelector('[data-uid="'+defUid+'"]');
+  if(!a||!d)return;
+  const ar=a.getBoundingClientRect(),dr=d.getBoundingClientRect();
+  const ax=ar.left+ar.width/2,ay=ar.top+ar.height/2;
+  const dx=dr.left+dr.width/2,dy=dr.top+dr.height/2;
+  const len=Math.hypot(dx-ax,dy-ay);
+  const ang=Math.atan2(dy-ay,dx-ax)*180/Math.PI;
+
+  /* Defer DOM mutation to next frame so any pending render completes first */
+  requestAnimationFrame(()=>{
+    try{
+      /* Beam: long, glowing, multi-layer */
+      const beam=document.createElement('div');beam.className='fx-attack-beam';
+      beam.style.left=ax+'px';beam.style.top=ay+'px';
+      beam.style.width=len+'px';
+      beam.style.transform='translateY(-50%) rotate('+ang+'deg)';
+      document.body.appendChild(beam);
+
+      /* Inner crackle layer */
+      const crackle=document.createElement('div');crackle.className='fx-attack-crackle';
+      crackle.style.left=ax+'px';crackle.style.top=ay+'px';
+      crackle.style.width=len+'px';
+      crackle.style.transform='translateY(-50%) rotate('+ang+'deg)';
+      document.body.appendChild(crackle);
+
+      /* Impact burst at target */
+      const burst=document.createElement('div');burst.className='fx-impact-burst';
+      burst.style.left=dx+'px';burst.style.top=dy+'px';
+      document.body.appendChild(burst);
+
+      /* Target shake */
+      const target=document.querySelector('[data-uid="'+defUid+'"]');
+      if(target)target.classList.add('fx-shake');
+
+      setTimeout(()=>{
+        try{beam.remove();crackle.remove();burst.remove();}catch(e){}
+        if(target)target.classList.remove('fx-shake');
+      },900);
+    }catch(e){console.warn('attack flash failed:',e);}
+  });
+}
+
+/* Visual: stun frost overlay on a card. */
+function showStunEffect(uid){
+  requestAnimationFrame(()=>{
+    try{
+      const el=document.querySelector('[data-uid="'+uid+'"]');if(!el)return;
+      const r=el.getBoundingClientRect();
+      const fx=document.createElement('div');fx.className='fx-stun-burst';
+      fx.style.left=(r.left+r.width/2)+'px';fx.style.top=(r.top+r.height/2)+'px';
+      document.body.appendChild(fx);
+      setTimeout(()=>{try{fx.remove();}catch(e){}},1500);
+    }catch(e){}
+  });
+}
+
+/* Visual: green heal sparkles rising from a card. */
+function showHealEffect(uid){
+  requestAnimationFrame(()=>{
+    try{
+      const el=document.querySelector('[data-uid="'+uid+'"]');if(!el)return;
+      const r=el.getBoundingClientRect();
+      /* Three sparkles staggered */
+      for(let i=0;i<5;i++){
+        const fx=document.createElement('div');fx.className='fx-heal-spark';
+        fx.style.left=(r.left+r.width*0.2+Math.random()*r.width*0.6)+'px';
+        fx.style.top=(r.top+r.height*0.7)+'px';
+        fx.style.animationDelay=(i*60)+'ms';
+        document.body.appendChild(fx);
+        setTimeout(()=>{try{fx.remove();}catch(e){}},1400);
+      }
+    }catch(e){}
+  });
+}
+
+/* Visual: gold ring pulse for counter placement. */
+function showCounterEffect(uid){
+  requestAnimationFrame(()=>{
+    try{
+      const el=document.querySelector('[data-uid="'+uid+'"]');if(!el)return;
+      const r=el.getBoundingClientRect();
+      const fx=document.createElement('div');fx.className='fx-counter-pulse';
+      fx.style.left=(r.left+r.width/2)+'px';fx.style.top=(r.top+r.height/2)+'px';
+      document.body.appendChild(fx);
+      setTimeout(()=>{try{fx.remove();}catch(e){}},900);
+    }catch(e){}
+  });
+}
+
+/* Visual: red dissolve when a card is destroyed. */
+function showDestroyEffect(uid){
+  /* Capture position before destroy so we can place the effect even after DOM removal */
+  const el=document.querySelector('[data-uid="'+uid+'"]');if(!el)return;
+  const r=el.getBoundingClientRect();
+  requestAnimationFrame(()=>{
+    try{
+      const fx=document.createElement('div');fx.className='fx-destroy-burst';
+      fx.style.left=(r.left+r.width/2)+'px';fx.style.top=(r.top+r.height/2)+'px';
+      fx.style.width=r.width+'px';fx.style.height=r.height+'px';
+      document.body.appendChild(fx);
+      setTimeout(()=>{try{fx.remove();}catch(e){}},1100);
+    }catch(e){}
+  });
 }
