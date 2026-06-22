@@ -35,13 +35,7 @@ async function act(mutator){
 }
 
 /* IMAGES */
-/* ═══════════════════════════════════════════════════════
-   CARD DATABASE — loaded from the real card set
-   Source priority:
-     1. window.CATA_CARDS  (cards-data.js — exported from Card Studio)
-     2. localStorage 'ca_cards_db'  (in-progress Card Studio data)
-   Each card: {id,img,name,faction,type,sub?,level?,hp?,atkCost?,atk?,cost?,keywords?,text?}
-═══════════════════════════════════════════════════════ */
+
 const IMG_BASE='https://raw.githubusercontent.com/ctest9104-tech/cataclysm-assets/main/images/';
 const FBG={synth:'#1f0d02',mystic:'#0f0520',shifter:'#040c1a',survivor:'#050f08',apex:'#130d00',neutral:'#141414',token:'#0d0a07'};
 const FCOL={synth:'#FF6D23',mystic:'#9B59B6',shifter:'#4A9EE8',survivor:'#76C442',apex:'#F0B429',neutral:'#aaa'};
@@ -74,7 +68,6 @@ function ingestCard(o){
   if(c.cost===undefined)c.cost=0;
   if(c.level===undefined&&(c.type==='fighter'||c.type==='weapon'))c.level=1;
 
-  /* ─── KEYWORD AUTOMATION: parse text and keywords into engine flags ─── */
   const text=(c.text||'')+' '+(c.keywords||[]).join(' ');
   const lowText=text.toLowerCase();
   /* Armor N - parse number after "Armor" */
@@ -99,10 +92,9 @@ function ingestCard(o){
   /* Can't be blocked */
   if(/can.t be blocked/i.test(text)){ c.atkFlags=c.atkFlags||{}; c.atkFlags.unblockable=true; }
 
-  /* Special per-card flags */
-  if(o.id==='render-mq83vajo')c.diesEndOfLevel=true;  /* Whump! token */
-  if(o.id==='render-mq838ccz')c.createsTempToken=true;  /* Mimeoscoped tactic */
-  if(o.id==='render-mq83cnop')c.armor=Math.max(c.armor||0,1);  /* Notamotua Armor 1 — text scan may miss */
+  if(o.id==='render-mq83vajo')c.diesEndOfLevel=true;
+  if(o.id==='render-mq838ccz')c.createsTempToken=true;
+  if(o.id==='render-mq83cnop')c.armor=Math.max(c.armor||0,1);
 
   CARDS[c.id]=c;
 }
@@ -174,16 +166,12 @@ function rollDieVisible(sides,reason,cb){
 }
 
 function transformInstance(gp,uid,maxLevel,opts){
-  /* Per official rules R1.0: Transform = "Destroy this Fighter. Reveal cards from the top
-     of your deck until you reveal another Fighter of the level of that fighter or lower
-     with a different name that is not already in play. Put that fighter into play and
-     then shuffle the revealed cards into your deck." */
   const i=gp.inst[uid];if(!i)return;
   const oldC=CARDS[i.cid]||{};
   const pid=i.owner;const oldName=oldC.name;
-  /* maxLevel defaults to the source Fighter's own level */
+
   const cap=(maxLevel!==undefined&&maxLevel!==null)?maxLevel:(oldC.level||0);
-  /* Names already on this player's board ("not already in play") */
+
   const onBoard=new Set(gp.p[pid].board.map(u=>{const ii=gp.inst[u];return ii&&CARDS[ii.cid]?CARDS[ii.cid].name:null;}).filter(Boolean));
   destroyInstance(gp,uid,{skipFortify:true});
   const deck=gp.p[pid].deck;const skipped=[];let found=null;
@@ -201,33 +189,6 @@ function untapUnit(gp,uid){const i=gp.inst[uid];if(!i)return;i.actedCount=0;log(
 function revealTopN(gp,pid,n){return gp.p[pid].deck.slice(0,n);}
 function bottomShuffle(gp,pid,uids){gp.p[pid].deck=gp.p[pid].deck.filter(x=>!uids.includes(x)).concat(shuffle(uids));}
 
-/* ─── Linked-fighter storage (Charlotte) ───
-   When Charlotte kills, the dead Fighter is removed from grave and tucked under Charlotte.
-   When Charlotte dies, linked Fighters return to play under their original owner. */
-function linkFighter(gp,charlotteUid,deadUid){
-  const ch=gp.inst[charlotteUid];if(!ch)return;
-  ch.linkedFighters=ch.linkedFighters||[];
-  /* Pull the dead Fighter out of its owner's grave so it's truly "removed from play" */
-  const dead=gp.inst[deadUid];if(!dead)return;
-  const ownerGrave=gp.p[dead.owner].grave;
-  const idx=ownerGrave.indexOf(deadUid);if(idx>=0)ownerGrave.splice(idx,1);
-  ch.linkedFighters.push({uid:deadUid,owner:dead.owner,cid:dead.cid});
-  log(gp,CARDS[dead.cid].name+' is linked to Charlotte (removed from play).');
-}
-function returnLinkedFighters(gp,charlotteUid){
-  const ch=gp.inst[charlotteUid];if(!ch||!ch.linkedFighters||!ch.linkedFighters.length)return;
-  ch.linkedFighters.forEach(link=>{
-    if(gp.inst[link.uid]){
-      /* Already exists somewhere; just push back to owner's board */
-      gp.p[link.owner].board.push(link.uid);
-      resetInstance(gp,link.uid);
-      log(gp,CARDS[link.cid].name+' returns to play.');
-    }
-  });
-  ch.linkedFighters=[];
-}
-
-/* ─── Stat / Mimeoscoped copy helpers ─── */
 function copyStatsOnto(gp,srcUid,modelUid){
   const sI=gp.inst[srcUid];const mI=gp.inst[modelUid];if(!sI||!mI)return;
   const mC=CARDS[mI.cid];if(!mC)return;
@@ -236,10 +197,9 @@ function copyStatsOnto(gp,srcUid,modelUid){
   log(gp,(CARDS[sI.cid]||{}).name+' enters as a copy of '+mC.name+' (HP '+sI.hp+', stats inherited).');
 }
 
-/* ─── Diffin attack restriction ─── */
 function diffinCanAttack(gp,uid){
   const i=gp.inst[uid];if(!i)return true;
-  const c=CARDS[i.cid];if(!c||c.id!=='render-mq82up5x')return true; /* not Diffin */
+  const c=CARDS[i.cid];if(!c||c.id!=='render-mq82up5x')return true;
   return myFighters(gp,i.owner).some(u=>gp.inst[u].hp>=5);
 }
 
@@ -252,7 +212,6 @@ window.rollDieManual=function(sides){
   });
 };
 
-/* Cross-trigger: any discard fires onAnyDiscard on every board unit whose card defines it. */
 function fireDiscardHooks(gp,discarderPid,uids){
   if(!uids||!uids.length)return;
   allBoard(gp).forEach(u=>{const i=gp.inst[u];if(!i)return;const c=CARDS[i.cid];if(c&&c.onAnyDiscard)c.onAnyDiscard(gp,u,discarderPid,uids);});
@@ -276,7 +235,6 @@ function effectiveCost(gp,pid,baseCost,kind){
   return Math.max(0,cost);
 }
 
-/* Untargetability filter — return true if uid can't currently be attacked. */
 function isUntargetable(gp,uid,attackerPid){
   const i=gp.inst[uid];if(!i)return false;const c=CARDS[i.cid];if(!c)return false;
   /* Stealthy on the level it entered (existing rule handled by validDefenders) */
@@ -336,7 +294,7 @@ function instSummary(gp,uid){
   const i=gp.inst[uid];if(!i)return null;const c=CARDS[i.cid];if(!c)return null;
   let atk=0;
   if(i.kind==='fighter'||i.kind==='boss'){
-    /* dynamicAtk fully overrides base atk (Stat copy / Slider faction-count / Muck) */
+
     if(c.dynamicAtk){
       const dv=c.dynamicAtk(gp,uid);
       if(dv!==undefined&&dv!==null)atk=dv+(i.counters&&i.counters.atk||0)+(i.tempAtk||0);
@@ -348,10 +306,10 @@ function instSummary(gp,uid){
     (i.wielded||[]).forEach(wu=>{
       const wc=CARDS[gp.inst[wu].cid];
       atk+=weaponAtk(gp,wu);
-      /* Weapon wielder bonus (Mayhem Fist) */
+
       if(wc&&wc.atkBonusForWielder)atk+=(wc.atkBonusForWielder(gp,uid)||0);
     });
-    /* Ally static buffs: any ally with a staticBuff(gp,this) function adds to my attack */
+
     if(i.owner&&gp.p[i.owner]){
       (gp.p[i.owner].board.concat([gp.p[i.owner].boss])).forEach(au=>{
         if(!au||au===uid)return;const ai=gp.inst[au];if(!ai)return;const ac=CARDS[ai.cid];
@@ -359,7 +317,7 @@ function instSummary(gp,uid){
       });
     }
   }
-  /* Effective keywords include those granted this-level via gainKwLevel */
+
   const gained=(i._gainedKw&&Object.keys(i._gainedKw).filter(k=>i._gainedKw[k]===gp.level))||[];
   const allKw=(c.keywords||[]).slice();
   gained.forEach(k=>{if(!allKw.includes(k))allKw.push(k);});
@@ -397,6 +355,7 @@ function moveZone(gp,pid,u,from,to){
 function drawN(gp,pid,n){for(let i=0;i<n;i++){const d=gp.p[pid].deck;if(!d.length)continue;gp.p[pid].hand.push(d.shift());}}
 function spendCoins(gp,pid,n){if(gp.p[pid].coins<n)return false;gp.p[pid].coins-=n;return true;}
 function healInst(gp,uid,amt){const i=gp.inst[uid];if(!i)return;const c=CARDS[i.cid];if(!c)return;const before=i.hp;i.hp=Math.min(i.maxHp,i.hp+amt);const real=i.hp-before;if(real>0){log(gp,c.name+' heals '+real+'.');showDamageNumber(uid,real,'heal');showHealEffect(uid);}}
+function gainHealth(gp,uid,amt){const i=gp.inst[uid];if(!i)return;const c=CARDS[i.cid];if(!c)return;i.maxHp+=amt;i.hp+=amt;log(gp,c.name+' gains '+amt+' Health (now '+i.hp+'/'+i.maxHp+').');showDamageNumber(uid,amt,'heal');showHealEffect(uid);}
 function addCounter(gp,uid,type,amt){
   const i=gp.inst[uid];if(!i)return;const c=CARDS[i.cid];
   i.counters=i.counters||{};i.counters[type]=(i.counters[type]||0)+amt;
@@ -415,21 +374,17 @@ function wieldWeapon(gp,wUid,fUid){
 }
 function fireOnEnter(gp,uid,pid){
   const i=gp.inst[uid];if(!i)return;const c=CARDS[i.cid];if(!c)return;
-  /* Same-name rule applies on every enter-play, not just hand-plays */
+
   enforceSameNameRule(gp,uid,pid);
-  if(!gp.inst[uid])return; /* the newly-entered card was destroyed by the rule (edge case) */
+  if(!gp.inst[uid])return;
   if(c.onEnter)c.onEnter(gp,{pid,src:uid});
 }
 
-/* PER OFFICIAL RULES R1.0: only one Fighter or Weapon of the same name in play at a time.
-   If a duplicate enters, the older copy is destroyed (most common ruling — preserve the newer
-   investment of action economy). Tokens (Whump!, Head Rat, Bear Trap, Toolbox, Mimeoscope)
-   are exempt — they're not Fighters by name. */
 function enforceSameNameRule(gp,uid,pid){
   const i=gp.inst[uid];if(!i)return;const c=CARDS[i.cid];if(!c)return;
   if(c.type!=='fighter'&&c.type!=='weapon')return;
   if(c.kind==='token'||c.type==='token')return;
-  /* Card text exemption: Gizzard, Persistent Pest explicitly allows any number of copies */
+
   if(c.id==='render-mq831kn8')return;
   const name=c.name;if(!name)return;
   const dupes=gp.p[pid].board.filter(u=>{
@@ -456,7 +411,7 @@ function destroyInstance(gp,uid,opts){
 function dealDamage(gp,uid,amt){
   const i=gp.inst[uid];if(!i||i.hp<=0)return;const c=CARDS[i.cid];if(!c)return;
   let reduced=amt;
-  /* Armor: prevent N damage each level (resets each level via i.armorUsedThisLevel) */
+
   if(c.armor){
     const armorLeft=c.armor-(i.armorUsedThisLevel||0);
     if(armorLeft>0){
@@ -548,7 +503,7 @@ function checkWin(gp){
   const left=activePlayers(gp);
   if(left.length<=1&&!gp.winner){gp.winner=left[0]||'draw';log(gp,left[0]?(gp.p[left[0]].name+' wins!'):'Draw!');}
 }
-function transformInstance_DEPRECATED_DO_NOT_USE_FALLBACK(gp,uid){
+function _transformInstanceFallback(gp,uid){
   /* Superseded by the rules-compliant transformInstance defined earlier in this file.
      Kept as a stub so any stray callers won't crash. */
   console.warn('Old transformInstance fallback hit — should never run.');
@@ -635,6 +590,7 @@ window.joinRoom=async function(){
   if(!room)return alert('Room not found. Check the code.');
   let pid=getMyPid(code);const existing=pid&&room.players.find(p=>p.id===pid);
   if(!existing&&room.phase!=='lobby')return alert('That game has already started.');
+  if(!existing&&room.players.length>=8)return alert('Table is full (8 player max).');
   if(!existing){pid=uid(8);room.players.push({id:pid,name:S.name,ready:false,factions:[],bossId:null,list:{}});await saveRoom(room);setMyPid(code,pid);}
   S.code=code;S.myId=pid;S.room=room;S.screen='lobby';
   history.replaceState({},'','?room='+code);subscribeToRoom(code);render();
@@ -647,8 +603,7 @@ window.markReady=async function(){await act(r=>{const me=r.players.find(p=>p.id=
 window.unready=async function(){await act(r=>{r.players.find(p=>p.id===S.myId).ready=false;});};
 window.beginGame=async function(){await act(r=>{startGame(r);});};
 window.doMulligan=function(){
-  /* Open the mulligan picker. Player selects any number of cards to set aside,
-     then draws that many, then the set-aside cards are shuffled back into the deck. */
+
   if(!S.room||!S.room.game)return;
   const gp=S.room.game;const me=gp.p[S.myId];if(!me)return;
   if(me.mullUsed)return alert('You already mulliganed.');
@@ -664,7 +619,7 @@ window.toggleMullCard=function(uid){
 window.confirmMulligan=async function(){
   const sel=Array.from(S.mullSel||[]);
   await act(r=>{const gp=r.game;const me=gp.p[S.myId];if(!me||me.mullUsed)return;
-    /* Move selected cards from hand back into deck, draw replacements, then shuffle. */
+
     sel.forEach(u=>{const idx=me.hand.indexOf(u);if(idx>=0)me.hand.splice(idx,1);me.deck.push(u);});
     drawN(gp,S.myId,sel.length);
     me.deck=shuffle(me.deck);
@@ -677,13 +632,11 @@ window.cancelMulligan=function(){S.mullSel=null;S.mullOpen=false;render();};
 window.playHandCard=async function(u){
   await act(r=>{const gp=r.game;const pid=S.myId;const c=CARDS[gp.inst[u].cid];
     if(gp.curIdx!==gp.order.indexOf(pid)&&c.speed!=='instant')return alert('Not your turn.');
-    /* PER OFFICIAL RULES R1.0: Fighters and Weapons have NO play cost — level-gated only.
-       Only Tactics and Responses spend coins on play. */
     const playCost=(c.type==='fighter'||c.type==='weapon')?0:(c.cost||0);
     if(gp.p[pid].coins<playCost)return alert('Not enough coins.');
     if(c.type==='fighter'){if((c.level||0)>gp.level)return alert('Level requirement not met (need Lvl '+(c.level)+').');
       moveZone(gp,pid,u,'hand','board');resetInstance(gp,u);
-      fireOnEnter(gp,u,pid); /* fireOnEnter now auto-enforces same-name rule */
+      fireOnEnter(gp,u,pid);
       gp.passedSet=[];}
     else if(c.type==='weapon'){if((c.level||0)>gp.level)return alert('Level requirement not met.');
       if(!gp.p[pid].board.filter(x=>gp.inst[x]&&gp.inst[x].kind==='fighter').length)return alert('No Fighter to wield this to.');
@@ -849,8 +802,6 @@ window.copyCode=function(){const url=window.location.origin+window.location.path
 window.showZoom=function(cid){S.zoomCid=cid;render();};
 window.closeZoom=function(){S.zoomCid=null;render();};
 
-
-/* ═══ RENDER — TCG ARENA TABLE STYLE ═══ */
 function pendingForMe(gp){return gp.pending&&gp.pending.forId===S.myId?gp.pending:null;}
 
 function bCard(gp,uid,opts){
@@ -863,32 +814,59 @@ function bCard(gp,uid,opts){
   const clickable=isAtkTgt||isPendTgt;
   let cls='bcard'+(s.kind==='boss'?' is-boss':'')+(s.tapped?' is-tapped':'')+(clickable?' is-target':'')+(s.keywords.includes('Stunned')?' is-stun':'');
   const clickFn=isAtkTgt?`confirmAttack('${uid}')`:(isPendTgt?`resolvePending('${uid}')`:null);
-  const wNames=(i.wielded||[]).filter(wu=>gp.inst[wu]).map(wu=>CARDS[gp.inst[wu].cid].name).join(', ');
-  /* Build attack breakdown so weapon/counter bonuses are visible */
+  const wielded=(i.wielded||[]).filter(wu=>gp.inst[wu]);
   const baseAtk=c.atk||0;
   const counterAtk=(i.counters&&i.counters.atk)||0;
   const tempAtk=i.tempAtk||0;
-  const weaponBonus=(i.wielded||[]).reduce((sum,wu)=>{const wc=CARDS[gp.inst[wu].cid];return sum+(wc&&wc.atkMod||0);},0);
-  const hasBonus=counterAtk+tempAtk+weaponBonus!==0;
-  const atkDisplay=hasBonus?`${s.atk}<span class="atk-base">(${baseAtk}${counterAtk?'+'+counterAtk+'c':''}${weaponBonus?'+'+weaponBonus+'w':''}${tempAtk?'+'+tempAtk+'t':''})</span>`:`${s.atk}`;
+  const weaponBonus=wielded.reduce((sum,wu)=>{const wc=CARDS[gp.inst[wu].cid];return sum+(wc&&wc.atkMod||0);},0);
+  const printedHp=c.hp||0;
+  const buffedHp=i.maxHp>printedHp;
+  const hpClass=i.hp<i.maxHp*0.35?'b-hp low':(buffedHp?'b-hp boosted':'b-hp');
+  const atkBoosted=(counterAtk+tempAtk+weaponBonus)>0;
+  const atkClass=atkBoosted?'b-atk boosted':'b-atk';
+
   let actBtns='';
   if(!isOpp&&myTurn&&!pend&&!S.attackPick){
     if(!s.tapped)actBtns+=`<button class="bcard-btn atk-btn" onclick="startAttack('${uid}')">&#9876; ATK</button>`;
     (c.activated||[]).forEach((ab,idx)=>{actBtns+=`<button class="bcard-btn ab-btn" onclick="useAbility('${uid}',${idx})" title="${ab.label}">${ab.label.slice(0,16)}</button>`;});
-    (i.wielded||[]).filter(wu=>gp.inst[wu]).forEach(wu=>{const wc=CARDS[gp.inst[wu].cid];([...(wc.weaponActivated||[]),(wc.grantsActivated||[])]).flat().forEach((ab,ai)=>{actBtns+=`<button class="bcard-btn ab-btn" onclick="useAbility('${uid}','w${wu}${ai}')" title="${ab.label}">${ab.label.slice(0,16)}</button>`;});});
+    wielded.forEach(wu=>{const wc=CARDS[gp.inst[wu].cid];([...(wc.weaponActivated||[]),(wc.grantsActivated||[])]).flat().forEach((ab,ai)=>{actBtns+=`<button class="bcard-btn ab-btn" onclick="useAbility('${uid}','w${wu}${ai}')" title="${ab.label}">${ab.label.slice(0,16)}</button>`;});});
   }
+
+  /* MTGA-style corner stats: ATK bottom-left, HP bottom-right, both colored when boosted */
+  const ptHtml=(s.kind==='fighter'||s.kind==='boss')?
+    `<div class="bcard-pt-atk ${atkClass}" title="Attack${atkBoosted?' (base '+baseAtk+(counterAtk?' +'+counterAtk+' counters':'')+(weaponBonus?' +'+weaponBonus+' weapon':'')+(tempAtk?' +'+tempAtk+' temp':'')+')':''}">${s.atk}</div>
+     <div class="bcard-pt-hp ${hpClass}" title="${s.hp}/${i.maxHp} HP${buffedHp?' (boosted from '+printedHp+')':''}">${s.hp}<span class="bcard-pt-max">/${i.maxHp}</span></div>`:'';
+
+  /* Weapons docked under the wielder card */
+  const weaponHtml=wielded.length?
+    `<div class="bcard-weapons">${wielded.map(wu=>{const wc=CARDS[gp.inst[wu].cid]||{};return `<div class="bcard-weapon-chip" title="${wc.name||''}${wc.atkMod?' (+'+wc.atkMod+' atk)':''}" onclick="event.stopPropagation();showZoom('${gp.inst[wu].cid}')">${artImg(gp.inst[wu].cid,'bcard-weapon-img')}${wc.atkMod?`<span class="bcard-weapon-bonus">+${wc.atkMod}</span>`:''}</div>`;}).join('')}</div>`:'';
+
+  /* Counters + status badges row across the top of the card */
+  const badges=[];
+  if(counterAtk>0)badges.push(`<span class="bdg ctr" title="+${counterAtk} attack counter${counterAtk>1?'s':''}">+${counterAtk}&#9876;</span>`);
+  if(buffedHp)badges.push(`<span class="bdg buff" title="Fortified (+${i.maxHp-printedHp} HP)">+${i.maxHp-printedHp}&#10084;</span>`);
+  s.keywords.forEach(k=>{
+    if(k==='Stunned')badges.push(`<span class="bdg st" title="Stunned">STUN</span>`);
+    else if(k==='Enforcer')badges.push(`<span class="bdg en" title="Enforcer — must be attacked before others">ENF</span>`);
+    else if(k==='Stealthy')badges.push(`<span class="bdg sty" title="Stealthy — cannot be attacked the level it enters">STL</span>`);
+    else if(k==='Agility')badges.push(`<span class="bdg ag" title="Agility — 2 actions per level">AGI</span>`);
+    else if(k==='Phantasmal')badges.push(`<span class="bdg ph" title="Phantasmal">PHA</span>`);
+    else if(k==='Determination')badges.push(`<span class="bdg det" title="Determination — survives lethal damage once at 1 HP">DET</span>`);
+  });
+  const badgesHtml=badges.length?`<div class="bcard-badges">${badges.join('')}</div>`:'';
+
   return`<div class="zone-wrap"><div class="${cls}" data-uid="${uid}" style="border-color:${clickable?'var(--ap)':fCol+'40'}"${clickFn?` onclick="${clickFn}"`:''}
     oncontextmenu="showZoom('${i.cid}');return false">
     ${artImg(i.cid,'bcard-art')}
+    ${badgesHtml}
+    ${ptHtml}
     ${S.gmMode?`<button class="bcard-gm" onclick="event.stopPropagation();gmEdit('${uid}')" title="GM edit">&#9881;</button>`:''}
-    <div class="bcard-strip">
-      <div class="bcard-name" style="color:${fCol}">${s.name}</div>
-      <div class="bcard-stats"><span class="b-hp">&#10084;${s.hp}/${s.maxHp}</span><span class="b-atk">&#9876;${atkDisplay}</span></div>
-      ${s.keywords.length?`<div class="bcard-kw">${s.keywords.map(k=>`<span class="bdg${k==='Enforcer'?' en':k==='Stunned'?' st':''}">${k.slice(0,3)}</span>`).join('')}</div>`:''}
-      ${wNames?`<div class="bcard-wield">&#128481;${wNames}</div>`:''}
+    <div class="bcard-namestrip" style="background:linear-gradient(0deg,${fCol}dd,${fCol}77 60%,transparent)">
+      <span class="bcard-name">${s.name}</span>
     </div>
+    ${weaponHtml}
     ${actBtns?`<div class="bcard-acts">${actBtns}</div>`:''}
-  </div><div class="zone-tag">${s.kind==='boss'?'BOSS':c.type==='weapon'?'WPN':'FTR'}</div></div>`;
+  </div></div>`;
 }
 
 function hCard(gp,uid,myTurn,pend,fanOpts){
@@ -1006,7 +984,6 @@ function renderBuild(){
   const total=Object.values(me.list||{}).reduce((a,b)=>a+b,0);
   let h=`<div class="wrap"><h2 style="font-size:18px;margin-bottom:12px">DECK BUILDER</h2>`;
 
-  /* ── PRESET DECK PICKER ── */
   const presets=(typeof window!=='undefined'&&window.CATA_PRESET_DECKS)||[];
   if(presets.length){
     h+=`<div class="section-h">QUICK START — PRE-BUILT DECKS</div>`;
@@ -1098,16 +1075,15 @@ function renderPlay(){
   /* My player strip */
   h+=playerStrip(gp,S.myId,false);
 
-  /* Pending / attack action bar */
   if(pend){
     h+=`<div class="action-bar">&#9650; ${pend.prompt}`;
     if(pend.kind==='pick'||pend.kind==='discard'){
-      /* Detect: are the option values card UIDs we can show thumbnails for? */
+
       const opts=pend.options||[];
       const cardOpts=opts.filter(o=>o.value&&gp.inst[o.value]);
       const plainOpts=opts.filter(o=>!o.value||!gp.inst[o.value]);
       if(cardOpts.length){
-        /* Render as a card-search grid with art */
+
         h+=`<div class="action-card-grid">${cardOpts.map(o=>{const u=o.value;const i=gp.inst[u];const c=CARDS[i.cid]||{};const fc=FCOL[c.faction]||'#888';return `<div class="action-card-pick" style="border-color:${fc}80" onclick="resolvePending('${u}')" title="${c.name||''}">${artImg(i.cid,'action-card-pick-img')}<div class="action-card-pick-cap">${(c.name||'?').slice(0,20)}</div></div>`;}).join('')}</div>`;
       }
       if(plainOpts.length){
@@ -1122,7 +1098,6 @@ function renderPlay(){
     h+=`<div class="action-bar atk">&#9876; Attacking with <b>${CARDS[gp.inst[S.attackPick].cid].name}</b> — click a target above &nbsp; <button class="btn ghost sm" onclick="cancelAttackPick()">Cancel</button></div>`;
   }
 
-  /* Hand strip — curved fan: each card gets a rotation and lift based on its index */
   h+=`<div class="hand-strip">`;
   if(!myP.hand.length)h+='<div class="small" style="margin:auto;color:var(--dim)">Hand is empty</div>';
   const hn=myP.hand.length;const center=(hn-1)/2;const maxRot=hn>1?Math.min(22,hn*3.5):0;
@@ -1417,15 +1392,9 @@ function render(){
   render();
 })();
 
-/* ════════════════════════════════════════════════════════════
-   ENGINE EXTENSIONS — close the remaining _info gaps
-════════════════════════════════════════════════════════════ */
-
-/* Dice with on-screen animation. Roll happens immediately, but the visual
-   shows a tumbling die for ~900ms before settling on the result. */
 function rollDieVisible(sides,reason,cb){
   sides=sides||6;const result=1+Math.floor(Math.random()*sides);
-  /* Insert overlay; animate; then fire cb(result) */
+
   try{
     const ov=document.createElement('div');ov.className='fx-dice-overlay';
     ov.innerHTML='<div class="fx-die fx-die-rolling"><span class="fx-die-face">?</span></div><div class="fx-die-lbl">'+(reason||'Rolling d'+sides)+'</div>';
@@ -1443,40 +1412,35 @@ function rollDieVisible(sides,reason,cb){
   return result;
 }
 
-/* Cross-trigger: any time a card moves from hand to grave (i.e., a discard),
-   walk all active board cards looking for an onAnyDiscard handler. */
 function fireDiscardHooks(gp,discarderPid,uids){
   if(!uids||!uids.length)return;
   allBoard(gp).forEach(u=>{const i=gp.inst[u];if(!i)return;const c=CARDS[i.cid];
     if(c&&c.onAnyDiscard)c.onAnyDiscard(gp,{pid:i.owner,src:u,discarderPid,discardedUids:uids});});
 }
 
-/* Effective attack cost: starts from c.atkCost, then walks ally cards to apply
-   modifiers (Effin' Slingshot reduces by 1, Dreyver reduces Synth ally costs by 1,
-   EVee reduces Survivor ally costs by 1, Trouble Forerunner +1 to OTHER allies). */
 function effectiveAtkCost(gp,uid){
   const i=gp.inst[uid];if(!i)return 0;const c=CARDS[i.cid];if(!c)return 0;
   let cost=c.atkCost||0;
-  /* Override from Flecks-style "base cost becomes ①" */
+
   if(i._costOverride!==undefined&&i._costOverride!==null)cost=i._costOverride;
   const pid=i.owner;
-  /* Wielded Effin' Slingshot: -1 atk cost (id match) */
+
   (i.wielded||[]).forEach(wu=>{const wc=CARDS[gp.inst[wu].cid];
     if(wc&&wc.id==='render-mq82wrmk')cost-=1;
-    /* Wielded weapons can add a cost modifier on the wielder (Mayhem Fist +1) */
+
     if(wc&&wc.wielderAtkCostMod)cost+=wc.wielderAtkCostMod;
   });
-  /* Sky, Unlikely Champion: cost -1 per Survivor Fighter on your team */
+
   if(c.id==='render-mq83m92b'){
     const surv=myFighters(gp,pid).filter(u=>(CARDS[gp.inst[u].cid]||{}).faction==='survivor').length;
     cost-=surv;
   }
-  /* Allies' static cost modifiers */
+
   gp.p[pid].board.concat([gp.p[pid].boss]).forEach(au=>{
     if(!au||au===uid)return;const ai=gp.inst[au];if(!ai)return;const ac=CARDS[ai.cid];if(!ac)return;
     if(ac.atkCostModForAlly){cost+=ac.atkCostModForAlly(gp,uid,au);}
   });
-  /* Trouble Forerunner: any opposing Trouble adds +1 */
+
   eachOpponent(gp,pid,oppPid=>{
     gp.p[oppPid].board.concat([gp.p[oppPid].boss]).forEach(u=>{
       if(u&&(CARDS[(gp.inst[u]||{}).cid]||{}).id==='render-mq83senr')cost+=1;
@@ -1485,7 +1449,6 @@ function effectiveAtkCost(gp,uid){
   return Math.max(0,cost);
 }
 
-/* Untargetability filter — runs in validDefenders to filter out untargetable units. */
 function isUntargetable(gp,uid,attackerPid){
   const i=gp.inst[uid];if(!i)return false;const c=CARDS[i.cid];if(!c)return false;
   /* Seeya: untargetable if 5+ Fighters on team */
@@ -1502,13 +1465,11 @@ function isUntargetable(gp,uid,attackerPid){
   return false;
 }
 
-/* When a unit is attacked (declared target), allow it to react. */
 function fireOnAttacked(gp,defUid,atkUid){
   const di=gp.inst[defUid];if(!di)return;const dc=CARDS[di.cid];
   if(dc&&dc.onAttacked)dc.onAttacked(gp,{pid:di.owner,src:defUid,attacker:atkUid});
 }
 
-/* Visual: floating damage number above a card */
 function showDamageNumber(uid,amt,kind){
   try{
     const el=document.querySelector('[data-uid="'+uid+'"]');if(!el)return;
@@ -1521,12 +1482,8 @@ function showDamageNumber(uid,amt,kind){
   }catch(e){}
 }
 
-/* Visual: dramatic dual-element attack effect.
-   1. A bright lightning beam from attacker to defender
-   2. An impact burst at the target with shake
-   Deferred to next animation frame so DOM is stable after any re-render. */
 function showAttackFlash(atkUid,defUid){
-  /* Capture positions IMMEDIATELY so even if cards move/re-render, we have coords */
+
   const a=document.querySelector('[data-uid="'+atkUid+'"]');
   const d=document.querySelector('[data-uid="'+defUid+'"]');
   if(!a||!d)return;
@@ -1536,29 +1493,25 @@ function showAttackFlash(atkUid,defUid){
   const len=Math.hypot(dx-ax,dy-ay);
   const ang=Math.atan2(dy-ay,dx-ax)*180/Math.PI;
 
-  /* Defer DOM mutation to next frame so any pending render completes first */
   requestAnimationFrame(()=>{
     try{
-      /* Beam: long, glowing, multi-layer */
+
       const beam=document.createElement('div');beam.className='fx-attack-beam';
       beam.style.left=ax+'px';beam.style.top=ay+'px';
       beam.style.width=len+'px';
       beam.style.transform='translateY(-50%) rotate('+ang+'deg)';
       document.body.appendChild(beam);
 
-      /* Inner crackle layer */
       const crackle=document.createElement('div');crackle.className='fx-attack-crackle';
       crackle.style.left=ax+'px';crackle.style.top=ay+'px';
       crackle.style.width=len+'px';
       crackle.style.transform='translateY(-50%) rotate('+ang+'deg)';
       document.body.appendChild(crackle);
 
-      /* Impact burst at target */
       const burst=document.createElement('div');burst.className='fx-impact-burst';
       burst.style.left=dx+'px';burst.style.top=dy+'px';
       document.body.appendChild(burst);
 
-      /* Target shake */
       const target=document.querySelector('[data-uid="'+defUid+'"]');
       if(target)target.classList.add('fx-shake');
 
@@ -1570,7 +1523,6 @@ function showAttackFlash(atkUid,defUid){
   });
 }
 
-/* Visual: stun frost overlay on a card. */
 function showStunEffect(uid){
   requestAnimationFrame(()=>{
     try{
@@ -1584,13 +1536,12 @@ function showStunEffect(uid){
   });
 }
 
-/* Visual: green heal sparkles rising from a card. */
 function showHealEffect(uid){
   requestAnimationFrame(()=>{
     try{
       const el=document.querySelector('[data-uid="'+uid+'"]');if(!el)return;
       const r=el.getBoundingClientRect();
-      /* Three sparkles staggered */
+
       for(let i=0;i<5;i++){
         const fx=document.createElement('div');fx.className='fx-heal-spark';
         fx.style.left=(r.left+r.width*0.2+Math.random()*r.width*0.6)+'px';
@@ -1603,7 +1554,6 @@ function showHealEffect(uid){
   });
 }
 
-/* Visual: gold ring pulse for counter placement. */
 function showCounterEffect(uid){
   requestAnimationFrame(()=>{
     try{
@@ -1617,9 +1567,8 @@ function showCounterEffect(uid){
   });
 }
 
-/* Visual: red dissolve when a card is destroyed. */
 function showDestroyEffect(uid){
-  /* Capture position before destroy so we can place the effect even after DOM removal */
+
   const el=document.querySelector('[data-uid="'+uid+'"]');if(!el)return;
   const r=el.getBoundingClientRect();
   requestAnimationFrame(()=>{
