@@ -1,6 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════
-   CATACLYSM ARCADE — COMPLETE MASTER STYLESHEET
-   TCG Arena
+   CATACLYSM ARCADE
 ═══════════════════════════════════════════════════════════════ */
 @import url('https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Bebas+Neue&family=Share+Tech+Mono&display=swap');
 
@@ -122,13 +121,51 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
    ARENA GAME TABLE — the core gameplay UI
 ════════════════════════════════════════════════════════════ */
 #game-table {
-  display: grid;
-  grid-template-rows: auto 1fr auto 1fr auto auto;
+  display: flex;
+  flex-direction: column;
   height: calc(100vh - 48px);
   background: radial-gradient(ellipse at center, #131822 0%, var(--bg-deep) 85%);
   position: relative; overflow: hidden;
   user-select: none;
 }
+/* Each opponent strip is auto-height; their field expands to fill space */
+#game-table .player-strip { flex: 0 0 auto; }
+#game-table .opp-field    { flex: 1 1 0; min-height: 110px; }
+#game-table .my-field     { flex: 1 1 0; min-height: 120px; }
+#game-table .hand-strip   { flex: 0 0 auto; }
+
+/* Multi-opponent layouts: compress opponent rows progressively */
+#game-table[data-opp-count="2"] .opp-field { min-height: 90px; max-height: 22vh; }
+#game-table[data-opp-count="2"] .player-strip.opp { min-height: 56px; padding: 6px 14px; }
+
+#game-table[data-opp-count="3"] .opp-field { min-height: 78px; max-height: 16vh; }
+#game-table[data-opp-count="3"] .player-strip.opp { min-height: 50px; padding: 5px 14px; }
+#game-table[data-opp-count="3"] .opp-field .bcard { width: 92px; height: 129px; }
+#game-table[data-opp-count="3"] .opp-field .bcard-info { font-size: 10px; }
+
+#game-table[data-opp-count="4"] .opp-field,
+#game-table[data-opp-count="5"] .opp-field,
+#game-table[data-opp-count="6"] .opp-field { min-height: 70px; max-height: 13vh; }
+#game-table[data-opp-count="4"] .player-strip.opp,
+#game-table[data-opp-count="5"] .player-strip.opp,
+#game-table[data-opp-count="6"] .player-strip.opp { min-height: 44px; padding: 4px 14px; }
+#game-table[data-opp-count="4"] .opp-field .bcard,
+#game-table[data-opp-count="5"] .opp-field .bcard,
+#game-table[data-opp-count="6"] .opp-field .bcard { width: 78px; height: 109px; }
+#game-table[data-opp-count="4"] .opp-field .bcard-info,
+#game-table[data-opp-count="5"] .opp-field .bcard-info,
+#game-table[data-opp-count="6"] .opp-field .bcard-info { font-size: 9px; padding: 3px 5px; }
+#game-table[data-opp-count="4"] .opp-field .bcard-name,
+#game-table[data-opp-count="5"] .opp-field .bcard-name,
+#game-table[data-opp-count="6"] .opp-field .bcard-name { font-size: 9px; }
+
+/* When 4+ opponents, also allow vertical scrolling of the opponent stack */
+#game-table[data-opp-count="4"] .player-strip.opp,
+#game-table[data-opp-count="5"] .player-strip.opp,
+#game-table[data-opp-count="6"] .player-strip.opp { font-size: 11px; }
+#game-table[data-opp-count="4"] .ps-bossname,
+#game-table[data-opp-count="5"] .ps-bossname,
+#game-table[data-opp-count="6"] .ps-bossname { display: none; }
 /* Midfield line */
 #game-table::after {
   content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 2px;
@@ -345,29 +382,190 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
   100% { opacity: 0; transform: translate(-50%, -86px) scale(0.9); }
 }
 
-/* ── ATTACK LIGHTNING LINE ── */
-.fx-attack-line {
+/* ════════════════════════════════════════════════════════════
+   ACTION CARD PICKER — shown when a pending action lets you
+   search through cards (deck top, discard pile, hand, etc.)
+════════════════════════════════════════════════════════════ */
+.action-card-grid {
+  display: flex; gap: 10px;
+  margin-top: 12px;
+  overflow-x: auto;
+  padding: 6px 4px 10px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,109,35,0.4) transparent;
+}
+.action-card-grid::-webkit-scrollbar { height: 8px; }
+.action-card-grid::-webkit-scrollbar-thumb { background: rgba(255,109,35,0.4); border-radius: 4px; }
+.action-card-pick {
+  flex: 0 0 auto;
+  width: 110px; aspect-ratio: 5/7;
+  position: relative; cursor: pointer;
+  border: 2px solid; border-radius: 8px; overflow: hidden;
+  background: var(--bg-card);
+  transition: transform 0.18s, box-shadow 0.18s, border-color 0.18s;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+}
+.action-card-pick:hover {
+  transform: translateY(-4px) scale(1.05);
+  border-color: var(--ap);
+  box-shadow: 0 12px 28px rgba(0,0,0,0.75), 0 0 22px rgba(240,180,41,0.4);
+  z-index: 5;
+}
+.action-card-pick-img, .action-card-pick-img-fb {
+  width: 100%; height: 100%; object-fit: contain;
+  display: block; background: #000;
+}
+.action-card-pick-cap {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  padding: 4px 6px;
+  background: linear-gradient(0deg, rgba(0,0,0,0.95), rgba(0,0,0,0.7) 70%, transparent);
+  font-family: 'Bebas Neue', cursive; font-size: 10px;
+  letter-spacing: 0.05em; color: var(--cr);
+  text-align: center; line-height: 1.15;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+@media (max-width: 760px) {
+  .action-card-pick { width: 90px; }
+}
+
+/* ════════════════════════════════════════════════════════════
+   VISUAL EFFECTS — dramatic combat & state-change feedback
+════════════════════════════════════════════════════════════ */
+
+/* Attack beam — long, glowing, multi-layer */
+.fx-attack-beam {
   position: fixed; z-index: 1400; pointer-events: none;
-  height: 6px; transform-origin: 0 50%;
-  background: linear-gradient(90deg, rgba(255,180,40,0) 0%, rgba(255,180,40,0.9) 20%, #fff 50%, rgba(255,80,40,0.9) 80%, rgba(255,80,40,0) 100%);
-  box-shadow: 0 0 16px 4px rgba(255,140,40,0.6), 0 0 32px 8px rgba(255,80,40,0.35);
-  animation: fx-bolt 0.5s ease-out forwards;
-  border-radius: 4px;
+  height: 10px; transform-origin: 0 50%;
+  background: linear-gradient(90deg,
+    rgba(255,220,140,0) 0%,
+    rgba(255,200,60,0.95) 15%,
+    #ffffff 50%,
+    rgba(255,80,30,0.95) 85%,
+    rgba(255,80,30,0) 100%);
+  box-shadow: 0 0 24px 8px rgba(255,160,40,0.7), 0 0 48px 14px rgba(255,80,30,0.45), 0 0 80px 22px rgba(255,40,20,0.25);
+  animation: fx-beam 0.85s cubic-bezier(0.3,0.7,0.4,1) forwards;
+  border-radius: 6px;
 }
-@keyframes fx-bolt {
-  0%   { opacity: 0; height: 2px; filter: brightness(2); }
-  30%  { opacity: 1; height: 8px; filter: brightness(1.6); }
-  70%  { opacity: 1; height: 6px; filter: brightness(1.2); }
-  100% { opacity: 0; height: 2px; }
+@keyframes fx-beam {
+  0%   { opacity: 0; transform: translateY(-50%) rotate(var(--angle, 0deg)) scaleY(0.2); filter: brightness(2.5); }
+  18%  { opacity: 1; transform: translateY(-50%) rotate(var(--angle, 0deg)) scaleY(1.4); filter: brightness(2); }
+  45%  { opacity: 1; transform: translateY(-50%) rotate(var(--angle, 0deg)) scaleY(1); filter: brightness(1.6); }
+  80%  { opacity: 0.7; transform: translateY(-50%) rotate(var(--angle, 0deg)) scaleY(0.7); filter: brightness(1.2); }
+  100% { opacity: 0; transform: translateY(-50%) rotate(var(--angle, 0deg)) scaleY(0.3); }
 }
+
+/* Inner crackle — bright white core */
+.fx-attack-crackle {
+  position: fixed; z-index: 1401; pointer-events: none;
+  height: 3px; transform-origin: 0 50%;
+  background: linear-gradient(90deg, transparent 0%, #ffffff 50%, transparent 100%);
+  box-shadow: 0 0 12px 3px rgba(255,255,255,0.9);
+  animation: fx-crackle 0.6s ease-out forwards;
+}
+@keyframes fx-crackle {
+  0%   { opacity: 0; height: 1px; }
+  10%  { opacity: 1; height: 4px; }
+  30%  { opacity: 1; height: 2px; }
+  60%  { opacity: 0.6; height: 3px; }
+  100% { opacity: 0; height: 1px; }
+}
+
+/* Impact burst at target — radial flash */
+.fx-impact-burst {
+  position: fixed; z-index: 1402; pointer-events: none;
+  width: 4px; height: 4px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(circle, #fff 0%, rgba(255,200,60,0.95) 25%, rgba(255,80,30,0.7) 55%, transparent 80%);
+  box-shadow: 0 0 40px 20px rgba(255,140,40,0.6), 0 0 80px 40px rgba(255,60,20,0.35);
+  animation: fx-impact 0.7s cubic-bezier(0.25,0.85,0.35,1) forwards;
+}
+@keyframes fx-impact {
+  0%   { opacity: 0; width: 4px; height: 4px; }
+  20%  { opacity: 1; width: 100px; height: 100px; }
+  60%  { opacity: 0.7; width: 140px; height: 140px; }
+  100% { opacity: 0; width: 180px; height: 180px; }
+}
+
+/* Stun frost burst — blue ice spiral */
+.fx-stun-burst {
+  position: fixed; z-index: 1402; pointer-events: none;
+  width: 4px; height: 4px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(circle, rgba(180,230,255,0.95) 0%, rgba(80,180,255,0.7) 40%, transparent 70%);
+  box-shadow: 0 0 32px 12px rgba(120,200,255,0.7), 0 0 64px 24px rgba(80,140,255,0.4);
+  animation: fx-stun 1.4s cubic-bezier(0.25,0.85,0.35,1) forwards;
+}
+@keyframes fx-stun {
+  0%   { opacity: 0; width: 4px; height: 4px; transform: translate(-50%, -50%) rotate(0deg); }
+  20%  { opacity: 1; width: 80px; height: 80px; transform: translate(-50%, -50%) rotate(120deg); }
+  60%  { opacity: 0.9; width: 140px; height: 140px; transform: translate(-50%, -50%) rotate(280deg); }
+  100% { opacity: 0; width: 170px; height: 170px; transform: translate(-50%, -50%) rotate(380deg); }
+}
+
+/* Heal sparkles — green rising particles */
+.fx-heal-spark {
+  position: fixed; z-index: 1402; pointer-events: none;
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #fff 0%, #b8ff95 35%, var(--su) 75%, transparent);
+  box-shadow: 0 0 12px 4px rgba(118,196,66,0.7), 0 0 24px 6px rgba(118,196,66,0.4);
+  animation: fx-heal 1.2s ease-out forwards;
+  transform: translate(-50%, -50%);
+}
+@keyframes fx-heal {
+  0%   { opacity: 0; transform: translate(-50%, 0) scale(0.4); }
+  15%  { opacity: 1; transform: translate(-50%, -10px) scale(1); }
+  60%  { opacity: 1; transform: translate(-50%, -60px) scale(0.85); }
+  100% { opacity: 0; transform: translate(-50%, -110px) scale(0.5); }
+}
+
+/* Counter placed — gold ring expanding */
+.fx-counter-pulse {
+  position: fixed; z-index: 1402; pointer-events: none;
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  border: 3px solid var(--ap);
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 18px rgba(240,180,41,0.7), inset 0 0 12px rgba(240,180,41,0.5);
+  animation: fx-pulse 0.8s ease-out forwards;
+}
+@keyframes fx-pulse {
+  0%   { opacity: 0; width: 30px; height: 30px; border-width: 4px; }
+  20%  { opacity: 1; width: 60px; height: 60px; border-width: 3px; }
+  100% { opacity: 0; width: 140px; height: 140px; border-width: 1px; }
+}
+
+/* Card destroyed — red dissolve burst */
+.fx-destroy-burst {
+  position: fixed; z-index: 1402; pointer-events: none;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(circle, rgba(255,80,80,0.85) 0%, rgba(220,40,40,0.5) 40%, transparent 75%);
+  box-shadow: 0 0 30px 8px rgba(255,60,30,0.6);
+  border-radius: 8px;
+  animation: fx-destroy 1.0s cubic-bezier(0.4,0,0.2,1) forwards;
+}
+@keyframes fx-destroy {
+  0%   { opacity: 0; filter: brightness(2); }
+  10%  { opacity: 1; filter: brightness(2.5); }
+  40%  { opacity: 0.95; transform: translate(-50%, -50%) scale(1.15) rotate(2deg); filter: brightness(1.4); }
+  70%  { opacity: 0.7; transform: translate(-50%, -50%) scale(1.3) rotate(-3deg); filter: brightness(1); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1.5) rotate(5deg); filter: brightness(0.6); }
+}
+
+/* Card shake on hit */
 @keyframes fx-shake {
   0%, 100% { transform: translateX(0); }
-  20% { transform: translateX(-6px); }
-  40% { transform: translateX(5px); }
-  60% { transform: translateX(-4px); }
-  80% { transform: translateX(3px); }
+  15% { transform: translateX(-8px); }
+  30% { transform: translateX(7px); }
+  45% { transform: translateX(-5px); }
+  60% { transform: translateX(4px); }
+  80% { transform: translateX(-2px); }
 }
-.fx-shake { animation: fx-shake 0.4s; }
+.fx-shake { animation: fx-shake 0.55s; }
+.opp-field .bcard.fx-shake { animation: fx-shake 0.55s; transform-origin: center; }
 
 /* GM panel: manual die-roll row */
 .gm-dice-row { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -544,6 +742,11 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
 
 /* ════════════════════════════════════════════════════════════
    HUD — corner pillar + game log
+════════════════════════════════════════════════════════════ */
+/* (game-hud / hud-pill removed — controls moved into player strip; level pill is inline) */
+
+/* (older .log-panel/.log-head/.log-body removed — replaced by the redesigned block below in MODALS section) */
+
 /* ════════════════════════════════════════════════════════════
    MODALS — zoom (full card only), help, winner
 ════════════════════════════════════════════════════════════ */
@@ -694,7 +897,7 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
 .progress-fill { height: 100%; background: linear-gradient(90deg, var(--or), #ffaa60); border-radius: 3px; transition: width 0.3s; }
 
 /* ════════════════════════════════════════════════════════════
-   MULLIGAN PICKER (partial mulligan per official rules)
+   MULLIGAN PICKER (partial mulligan per official rules R1.0)
 ════════════════════════════════════════════════════════════ */
 .mull-modal {
   background: var(--bg-board); border: 2px solid var(--or); border-radius: 12px;
