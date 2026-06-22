@@ -1,6 +1,3 @@
-/* ═══════════════════════════════════════════════════════════════
-   CATACLYSM ARCADE
-═══════════════════════════════════════════════════════════════ */
 @import url('https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Bebas+Neue&family=Share+Tech+Mono&display=swap');
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -41,7 +38,6 @@ input, select, button { outline: none; }
 ::-webkit-scrollbar-thumb { background: rgba(255,109,35,0.3); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(255,109,35,0.5); }
 
-/* ───────────────────── BUTTONS ───────────────────── */
 .btn {
   background: var(--or); color: #000; padding: 10px 20px;
   font-family: 'Bebas Neue', cursive; font-size: 15px; letter-spacing: 0.1em;
@@ -57,7 +53,6 @@ input, select, button { outline: none; }
 .btn.sm { padding: 6px 14px; font-size: 12px; }
 .btn.danger { background: var(--red); color: #fff; }
 
-/* ───────────────────── INPUTS ───────────────────── */
 input, select {
   background: rgba(0,0,0,0.5); border: 1px solid var(--border-mid); color: #fff;
   padding: 10px 12px; font-family: 'Share Tech Mono', monospace; font-size: 13px;
@@ -65,7 +60,6 @@ input, select {
 }
 input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(255,109,35,0.18); }
 
-/* ───────────────────── LAYOUT ───────────────────── */
 .wrap { max-width: 1400px; margin: 0 auto; padding: 20px; width: 100%; flex: 1; }
 .center-box {
   max-width: 460px; margin: 6vh auto; background: var(--bg-panel);
@@ -79,7 +73,6 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
 .field input, .field select { width: 100%; }
 .small { font-size: 11px; color: var(--dim); }
 
-/* ───────────────────── TOPBAR ───────────────────── */
 #topbar {
   display: flex; justify-content: space-between; align-items: center; gap: 10px;
   padding: 10px 18px; min-height: 48px;
@@ -88,7 +81,6 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
 }
 #topbar .code { color: var(--or); letter-spacing: 0.25em; font-size: 14px; font-family: 'Bebas Neue', cursive; }
 
-/* ───────────────────── SECTION HEADERS ───────────────────── */
 .section-h {
   font-family: 'Bebas Neue', cursive; letter-spacing: 0.3em;
   color: rgba(255,109,35,0.6); font-size: 12px;
@@ -96,7 +88,6 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
   border-bottom: 1px solid rgba(255,109,35,0.12);
 }
 
-/* ───────────────────── FACTION CHIPS ───────────────────── */
 .faction-chip {
   display: inline-flex; align-items: center; gap: 6px;
   border: 1px solid; padding: 8px 16px;
@@ -117,9 +108,6 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
 .fc-apex { color: var(--ap); border-color: var(--ap); }
 .fc-apex.on { background: rgba(240,180,41,0.14); box-shadow: 0 0 12px rgba(240,180,41,0.25); }
 
-/* ════════════════════════════════════════════════════════════
-   ARENA GAME TABLE — the core gameplay UI
-════════════════════════════════════════════════════════════ */
 #game-table {
   display: flex;
   flex-direction: column;
@@ -128,13 +116,12 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
   position: relative; overflow: hidden;
   user-select: none;
 }
-/* Each opponent strip is auto-height; their field expands to fill space */
+
 #game-table .player-strip { flex: 0 0 auto; }
 #game-table .opp-field    { flex: 1 1 0; min-height: 110px; }
 #game-table .my-field     { flex: 1 1 0; min-height: 120px; }
 #game-table .hand-strip   { flex: 0 0 auto; }
 
-/* Multi-opponent layouts: compress opponent rows progressively */
 #game-table[data-opp-count="2"] .opp-field { min-height: 90px; max-height: 22vh; }
 #game-table[data-opp-count="2"] .player-strip.opp { min-height: 56px; padding: 6px 14px; }
 
@@ -151,21 +138,48 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
 #game-table[data-opp-count="6"] .player-strip.opp { min-height: 44px; padding: 4px 14px; }
 #game-table[data-opp-count="4"] .opp-field .bcard,
 #game-table[data-opp-count="5"] .opp-field .bcard,
-#game-table[data-opp-count="6"] .opp-field .bcard { width: 78px; height: 109px; }
-#game-table[data-opp-count="4"] .opp-field .bcard-info,
-#game-table[data-opp-count="5"] .opp-field .bcard-info,
-#game-table[data-opp-count="6"] .opp-field .bcard-info { font-size: 9px; padding: 3px 5px; }
+#game-table[data-opp-count="6"] .opp-field .bcard,
+#game-table[data-opp-count="7"] .opp-field .bcard { width: 72px; height: 100px; }
 #game-table[data-opp-count="4"] .opp-field .bcard-name,
 #game-table[data-opp-count="5"] .opp-field .bcard-name,
-#game-table[data-opp-count="6"] .opp-field .bcard-name { font-size: 9px; }
+#game-table[data-opp-count="6"] .opp-field .bcard-name,
+#game-table[data-opp-count="7"] .opp-field .bcard-name { font-size: 8px; }
+#game-table[data-opp-count="4"] .opp-field .bcard-pt-atk,
+#game-table[data-opp-count="5"] .opp-field .bcard-pt-atk,
+#game-table[data-opp-count="6"] .opp-field .bcard-pt-atk,
+#game-table[data-opp-count="7"] .opp-field .bcard-pt-atk,
+#game-table[data-opp-count="4"] .opp-field .bcard-pt-hp,
+#game-table[data-opp-count="5"] .opp-field .bcard-pt-hp,
+#game-table[data-opp-count="6"] .opp-field .bcard-pt-hp,
+#game-table[data-opp-count="7"] .opp-field .bcard-pt-hp { font-size: 12px; min-width: 22px; height: 22px; padding: 0 4px; }
+#game-table[data-opp-count="4"] .opp-field .bcard-pt-max,
+#game-table[data-opp-count="5"] .opp-field .bcard-pt-max,
+#game-table[data-opp-count="6"] .opp-field .bcard-pt-max,
+#game-table[data-opp-count="7"] .opp-field .bcard-pt-max { font-size: 8px; }
+#game-table[data-opp-count="4"] .opp-field .bcard-weapons,
+#game-table[data-opp-count="5"] .opp-field .bcard-weapons,
+#game-table[data-opp-count="6"] .opp-field .bcard-weapons,
+#game-table[data-opp-count="7"] .opp-field .bcard-weapons { bottom: -22px; }
+#game-table[data-opp-count="4"] .opp-field .bcard-weapon-chip,
+#game-table[data-opp-count="5"] .opp-field .bcard-weapon-chip,
+#game-table[data-opp-count="6"] .opp-field .bcard-weapon-chip,
+#game-table[data-opp-count="7"] .opp-field .bcard-weapon-chip { width: 22px; height: 32px; }
 
-/* When 4+ opponents, also allow vertical scrolling of the opponent stack */
+#game-table[data-opp-count="4"] .opp-field,
+#game-table[data-opp-count="5"] .opp-field,
+#game-table[data-opp-count="6"] .opp-field,
+#game-table[data-opp-count="7"] .opp-field { min-height: 62px; max-height: 11vh; }
 #game-table[data-opp-count="4"] .player-strip.opp,
 #game-table[data-opp-count="5"] .player-strip.opp,
-#game-table[data-opp-count="6"] .player-strip.opp { font-size: 11px; }
+#game-table[data-opp-count="6"] .player-strip.opp,
+#game-table[data-opp-count="7"] .player-strip.opp { font-size: 11px; min-height: 40px; padding: 4px 14px; }
 #game-table[data-opp-count="4"] .ps-bossname,
 #game-table[data-opp-count="5"] .ps-bossname,
-#game-table[data-opp-count="6"] .ps-bossname { display: none; }
+#game-table[data-opp-count="6"] .ps-bossname,
+#game-table[data-opp-count="7"] .ps-bossname { display: none; }
+
+#game-table[data-opp-count="6"],
+#game-table[data-opp-count="7"] { overflow-y: auto; }
 /* Midfield line */
 #game-table::after {
   content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 2px;
@@ -173,7 +187,6 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
   pointer-events: none; z-index: 0;
 }
 
-/* ── PLAYER STRIPS ── */
 .player-strip {
   display: flex; align-items: center; gap: 12px; padding: 8px 14px;
   background: linear-gradient(90deg, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.55) 100%);
@@ -278,7 +291,6 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
 .end-turn-btn:hover { background: #ffd060; transform: translateY(-2px); box-shadow: 0 6px 18px rgba(240,180,41,0.5); }
 @keyframes et-pulse { 0%,100% { box-shadow: 0 4px 10px rgba(240,180,41,0.35); } 50% { box-shadow: 0 4px 18px rgba(240,180,41,0.6); } }
 
-/* ── BATTLEFIELDS ── */
 .opp-field, .my-field {
   display: flex; gap: 12px; padding: 16px 24px;
   position: relative; z-index: 1; overflow-x: auto; overflow-y: hidden;
@@ -303,7 +315,6 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
   background: linear-gradient(180deg, transparent, rgba(255,255,255,0.18), transparent);
 }
 
-/* ── HAND STRIP (Hearthstone-style curved fan) ── */
 .hand-strip {
   display: flex; justify-content: center; align-items: flex-end;
   min-height: 200px; padding: 14px 24px 8px;
@@ -328,7 +339,6 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
   box-shadow: 0 22px 40px rgba(0,0,0,0.9), var(--playable-glow);
 }
 
-/* ── DICE OVERLAY ── */
 .fx-dice-overlay {
   position: fixed; inset: 0; z-index: 2000;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -365,7 +375,6 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
   border: 1px solid rgba(240,180,41,0.5);
 }
 
-/* ── FLOATING DAMAGE / HEAL NUMBERS ── */
 .fx-damage {
   position: fixed; z-index: 1500; pointer-events: none;
   font-family: 'Black Ops One', cursive; font-size: 36px;
@@ -382,10 +391,6 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
   100% { opacity: 0; transform: translate(-50%, -86px) scale(0.9); }
 }
 
-/* ════════════════════════════════════════════════════════════
-   ACTION CARD PICKER — shown when a pending action lets you
-   search through cards (deck top, discard pile, hand, etc.)
-════════════════════════════════════════════════════════════ */
 .action-card-grid {
   display: flex; gap: 10px;
   margin-top: 12px;
@@ -428,10 +433,6 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
 @media (max-width: 760px) {
   .action-card-pick { width: 90px; }
 }
-
-/* ════════════════════════════════════════════════════════════
-   VISUAL EFFECTS — dramatic combat & state-change feedback
-════════════════════════════════════════════════════════════ */
 
 /* Attack beam — long, glowing, multi-layer */
 .fx-attack-beam {
@@ -571,52 +572,126 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
 .gm-dice-row { display: flex; gap: 6px; flex-wrap: wrap; }
 .gm-dice-row .gm-mini { flex: 1; min-width: 50px; }
 
-/* ════════════════════════════════════════════════════════════
-   CARD ARCHITECTURE — 120×168 TCG ratio, art-focused
-════════════════════════════════════════════════════════════ */
 .bcard, .hcard {
   width: 120px; height: 168px;
   background: var(--bg-card); border-radius: 8px;
-  border: 2px solid #2a2e36; position: relative; overflow: hidden;
+  border: 2px solid #2a2e36; position: relative; overflow: visible;
   cursor: pointer; display: flex; flex-direction: column; justify-content: flex-end;
   transition: transform 0.22s cubic-bezier(0.2,0.8,0.2,1), box-shadow 0.22s ease, border-color 0.22s ease;
   z-index: 2; box-shadow: 0 6px 14px rgba(0,0,0,0.7); flex-shrink: 0;
 }
+.bcard { overflow: visible; }
+.hcard { overflow: hidden; }
 
-/* Art layer (fills entire card) */
 .bcard-art, .hcard-art {
   position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-  object-fit: cover; z-index: 1;
+  object-fit: cover; z-index: 1; border-radius: 6px;
 }
-.bcard-art-fb, .hcard-art-fb { position: absolute; inset: 0; z-index: 1; }
+.bcard-art-fb, .hcard-art-fb { position: absolute; inset: 0; z-index: 1; border-radius: 6px; }
 
-/* Info overlay (frosted glass at bottom) */
-.hcard-body, .bcard-strip {
+/* Name strip across bottom of card with faction-color gradient */
+.bcard-namestrip {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  padding: 14px 8px 6px;
+  z-index: 3; pointer-events: none;
+  border-bottom-left-radius: 6px; border-bottom-right-radius: 6px;
+}
+.bcard-name {
+  font-family: 'Black Ops One', cursive; font-size: 10px; color: #fff;
+  text-shadow: 1px 1px 2px #000, 0 0 4px rgba(0,0,0,0.9);
+  display: block; line-height: 1.1;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* MTGA-style corner stat badges — ATK bottom-left, HP bottom-right */
+.bcard-pt-atk, .bcard-pt-hp {
+  position: absolute; bottom: -8px; z-index: 6;
+  min-width: 30px; height: 30px; padding: 0 7px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Black Ops One', cursive; font-size: 16px;
+  border: 2px solid #000; border-radius: 6px;
+  box-shadow: 0 3px 8px rgba(0,0,0,0.85), inset 0 -2px 4px rgba(0,0,0,0.3);
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.9);
+}
+.bcard-pt-atk { left: -6px; background: linear-gradient(135deg, #d44820, #8a2810); color: #fff; }
+.bcard-pt-atk.boosted { background: linear-gradient(135deg, #f0b429, #b8801f); color: #1a0f00; box-shadow: 0 3px 10px rgba(240,180,41,0.6), inset 0 -2px 4px rgba(0,0,0,0.25); border-color: #5a3500; }
+.bcard-pt-hp { right: -6px; background: linear-gradient(135deg, #4a8030, #295018); color: #fff; flex-direction: row; gap: 0; }
+.bcard-pt-hp.boosted { background: linear-gradient(135deg, #76c442, #4a8030); color: #fff; box-shadow: 0 3px 10px rgba(118,196,66,0.55), inset 0 -2px 4px rgba(0,0,0,0.25); }
+.bcard-pt-hp.low { background: linear-gradient(135deg, #cc1100, #6a0500); color: #fff; box-shadow: 0 3px 10px rgba(204,17,0,0.6), inset 0 -2px 4px rgba(0,0,0,0.3); animation: hp-pulse-low 1.4s ease-in-out infinite; }
+.bcard-pt-max { font-size: 10px; opacity: 0.8; margin-left: 1px; }
+@keyframes hp-pulse-low { 0%,100% { box-shadow: 0 3px 10px rgba(204,17,0,0.6); } 50% { box-shadow: 0 3px 18px rgba(255,40,20,1); } }
+
+/* Status / counter badges row across the TOP of the card */
+.bcard-badges {
+  position: absolute; top: 4px; left: 4px; right: 4px; z-index: 5;
+  display: flex; flex-wrap: wrap; gap: 2px;
+  pointer-events: none;
+}
+.bdg {
+  font-size: 8px; padding: 2px 5px; border-radius: 3px;
+  font-family: 'Bebas Neue', cursive; letter-spacing: 0.06em;
+  text-shadow: 1px 1px 1px rgba(0,0,0,0.9);
+  border: 1px solid;
+  background: rgba(0,0,0,0.8);
+}
+.bdg.ctr { background: rgba(240,180,41,0.9); color: #000; border-color: #fff8c0; }
+.bdg.buff { background: rgba(118,196,66,0.9); color: #002000; border-color: #b8ff95; }
+.bdg.en { background: rgba(204,17,0,0.9); color: #fff; border-color: #ff8a78; }
+.bdg.st { background: rgba(80,180,255,0.9); color: #001830; border-color: #c0e0ff; }
+.bdg.sty { background: rgba(60,60,60,0.92); color: #ccc; border-color: #888; }
+.bdg.ag { background: rgba(155,89,182,0.9); color: #fff; border-color: #d0a0e8; }
+.bdg.ph { background: rgba(40,40,80,0.92); color: #c0c0ff; border-color: #6060a0; }
+.bdg.det { background: rgba(204,153,17,0.9); color: #000; border-color: #ffe080; }
+.bdg.tmp { background: rgba(255,109,35,0.9); color: #000; border-color: #ffb088; }
+
+/* Weapons docked under the wielder card */
+.bcard-weapons {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  bottom: -38px; z-index: 4;
+  display: flex; gap: 4px;
+}
+.bcard-weapon-chip {
+  width: 34px; height: 48px;
+  border: 2px solid var(--or); border-radius: 4px; overflow: visible;
+  background: var(--bg-card);
+  position: relative; cursor: pointer;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.7), 0 0 8px rgba(255,109,35,0.4);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.bcard-weapon-chip:hover {
+  transform: translateY(-3px) scale(1.15);
+  box-shadow: 0 8px 18px rgba(0,0,0,0.8), 0 0 14px rgba(255,109,35,0.7);
+  z-index: 10;
+}
+.bcard-weapon-img, .bcard-weapon-img-fb {
+  width: 100%; height: 100%; object-fit: cover;
+  border-radius: 2px; display: block;
+}
+.bcard-weapon-bonus {
+  position: absolute; top: -6px; right: -6px;
+  background: var(--ap); color: #000;
+  font-family: 'Black Ops One', cursive; font-size: 9px;
+  padding: 1px 4px; border-radius: 3px;
+  border: 1.5px solid #000;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.7);
+}
+
+/* Hand card overlay (frosted bottom info — unchanged from before) */
+.hcard-body {
   position: relative; z-index: 3;
   background: linear-gradient(0deg, rgba(0,0,0,0.96) 0%, rgba(0,0,0,0.78) 65%, transparent 100%);
   backdrop-filter: blur(4px);
   border-top: 1px solid rgba(255,255,255,0.12);
   padding: 6px 8px 7px;
 }
-.bcard-name, .hcard-name {
+.hcard-name {
   font-family: 'Black Ops One', cursive; font-size: 10px; color: #fff;
   line-height: 1.2; text-shadow: 1px 1px 2px #000;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 2px;
 }
 .hcard-meta { font-size: 8px; color: var(--dim); letter-spacing: 0.05em; }
-.bcard-wield { font-size: 8px; color: var(--sh); margin-top: 2px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; padding: 0 8px 4px; }
-.bcard-stats { display: flex; justify-content: space-between; font-family: 'Bebas Neue', cursive; font-size: 13px; margin-top: 3px; }
-.b-hp, .z-hp { color: var(--su); text-shadow: 0 0 5px rgba(118,196,66,0.45); }
-.b-atk, .z-atk { color: var(--or); text-shadow: 0 0 5px rgba(255,109,35,0.45); }
-.z-cost { color: var(--ap); }
 
-/* Keyword badges */
-.bcard-kw { display: flex; gap: 3px; flex-wrap: wrap; margin-top: 3px; }
-.bdg { font-size: 7.5px; background: rgba(255,109,35,0.22); color: var(--or); padding: 1px 4px; border-radius: 2px; font-family: 'Bebas Neue', cursive; letter-spacing: 0.05em; }
-.bdg.en { background: rgba(204,17,0,0.28); color: #ff8a78; }
-.bdg.st { background: rgba(74,158,232,0.28); color: var(--sh); }
-
-/* Top-corner badges */
+/* Top-corner badges on hand cards */
 .hcard-cost {
   position: absolute; top: 6px; right: 6px; z-index: 4;
   width: 28px; height: 28px; border-radius: 50%;
@@ -637,32 +712,29 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
   font-size: 11px; padding: 2px 7px; border-radius: 3px;
 }
 
-/* Zone wrap & tag (under each board card) */
-.zone-wrap { display: flex; flex-direction: column; gap: 4px; align-items: center; flex-shrink: 0; }
-.zone-tag { font-family: 'Bebas Neue', cursive; font-size: 9px; color: rgba(255,255,255,0.3); letter-spacing: 0.2em; text-align: center; }
+.zone-wrap { display: flex; flex-direction: column; gap: 14px; align-items: center; flex-shrink: 0; padding-bottom: 14px; }
 
-/* In-card action buttons */
 .bcard-acts {
-  position: relative; z-index: 4;
+  position: absolute; left: -2px; right: -2px; top: -36px; z-index: 7;
   background: rgba(0,0,0,0.92); padding: 4px;
-  display: flex; flex-direction: column; gap: 3px;
-  border-top: 1px solid var(--border-soft);
+  display: flex; gap: 3px; flex-wrap: wrap;
+  border: 1px solid var(--border-mid); border-radius: 6px;
+  box-shadow: 0 -4px 10px rgba(0,0,0,0.6);
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.15s;
 }
+.bcard:hover .bcard-acts { opacity: 1; pointer-events: auto; }
 .bcard-btn {
   font-size: 9px; padding: 3px 5px; border: 1px solid var(--border-mid);
   color: #fff; background: rgba(255,255,255,0.06); border-radius: 2px;
   font-family: 'Share Tech Mono', monospace;
-  transition: all 0.15s; text-align: center;
+  transition: all 0.15s; text-align: center; cursor: pointer; flex: 1; min-width: 38px;
 }
 .bcard-btn:hover { background: rgba(255,255,255,0.18); border-color: rgba(255,255,255,0.4); }
 .bcard-btn.atk-btn { border-color: rgba(204,17,0,0.45); color: #ff8a78; background: rgba(204,17,0,0.1); }
 .bcard-btn.atk-btn:hover { background: var(--red); color: #fff; border-color: var(--red); }
 .bcard-btn.ab-btn { font-size: 8.5px; color: var(--ap); border-color: rgba(240,180,41,0.35); background: rgba(240,180,41,0.06); }
 .bcard-btn.ab-btn:hover { background: var(--ap); color: #000; }
-
-/* ════════════════════════════════════════════════════════════
-   GAMEPLAY PHYSICS — hover, tap, target, stun
-════════════════════════════════════════════════════════════ */
 
 /* Hand cards */
 .hand-strip .hcard:not(.unplayable):hover {
@@ -709,9 +781,6 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
 .opp-field .bcard.is-target { transform: rotate(180deg); }
 .opp-field .bcard.is-target:hover { transform: rotate(0deg) scale(1.06); }
 
-/* ════════════════════════════════════════════════════════════
-   ACTION BAR — board edge, doesn't block view
-════════════════════════════════════════════════════════════ */
 .action-bar {
   background: linear-gradient(90deg, rgba(240,180,41,0.12) 0%, rgba(240,180,41,0.06) 100%);
   border-top: 2px solid rgba(240,180,41,0.6);
@@ -740,16 +809,10 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
 }
 .action-opt:hover { background: var(--ap); color: #000; transform: scale(1.04); }
 
-/* ════════════════════════════════════════════════════════════
-   HUD — corner pillar + game log
-════════════════════════════════════════════════════════════ */
 /* (game-hud / hud-pill removed — controls moved into player strip; level pill is inline) */
 
 /* (older .log-panel/.log-head/.log-body removed — replaced by the redesigned block below in MODALS section) */
 
-/* ════════════════════════════════════════════════════════════
-   MODALS — zoom (full card only), help, winner
-════════════════════════════════════════════════════════════ */
 .zoom-overlay, .overlay {
   position: fixed; inset: 0; background: rgba(0,0,0,0.92);
   backdrop-filter: blur(10px);
@@ -866,9 +929,6 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
 .winner-screen h1 { font-size: 72px; color: var(--ap); text-shadow: 4px 4px 0 var(--red), 0 0 50px rgba(240,180,41,0.65); line-height: 1; text-align: center; padding: 0 20px; }
 .winner-sub { font-family: 'Bebas Neue', cursive; font-size: 16px; letter-spacing: 0.35em; color: var(--dim); text-align: center; }
 
-/* ════════════════════════════════════════════════════════════
-   LOBBY
-════════════════════════════════════════════════════════════ */
 .player-row {
   display: flex; justify-content: space-between; align-items: center;
   padding: 11px 16px; background: var(--bg-panel); margin-bottom: 6px;
@@ -884,9 +944,6 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
 }
 .invite-url { font-size: 10px; color: var(--dim); margin-top: 8px; word-break: break-all; user-select: text; }
 
-/* ════════════════════════════════════════════════════════════
-   DECK BUILDER
-════════════════════════════════════════════════════════════ */
 .build-summary {
   position: sticky; top: 60px; z-index: 10;
   background: rgba(255,109,35,0.08); border: 1px solid rgba(255,109,35,0.25);
@@ -896,9 +953,6 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
 .progress-bar { height: 5px; background: rgba(255,109,35,0.12); margin-top: 8px; border-radius: 3px; overflow: hidden; }
 .progress-fill { height: 100%; background: linear-gradient(90deg, var(--or), #ffaa60); border-radius: 3px; transition: width 0.3s; }
 
-/* ════════════════════════════════════════════════════════════
-   MULLIGAN PICKER (partial mulligan per official rules R1.0)
-════════════════════════════════════════════════════════════ */
 .mull-modal {
   background: var(--bg-board); border: 2px solid var(--or); border-radius: 12px;
   width: 660px; max-width: 95vw; max-height: 88vh;
@@ -1129,7 +1183,6 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
 .progress-bar { height: 5px; background: rgba(255,109,35,0.12); margin-top: 8px; border-radius: 3px; overflow: hidden; }
 .progress-fill { height: 100%; background: linear-gradient(90deg, var(--or), #ffaa60); border-radius: 3px; transition: width 0.3s; }
 
-/* ── BOSS PICKER — full card images at 5:7 ─────────────── */
 .boss-pick {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -1166,7 +1219,6 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
   text-align: center;
 }
 
-/* ── DECK CARD GRID — full card images with qty controls ── */
 .deck-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
@@ -1243,9 +1295,6 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
 }
 .dtile-info:hover { background: var(--or); color: #000; border-color: var(--or); }
 
-/* ════════════════════════════════════════════════════════════
-   PILE VIEWER — deck/discard browse with search
-════════════════════════════════════════════════════════════ */
 .pile { cursor: pointer; }
 .pile:active { transform: scale(0.95); }
 
