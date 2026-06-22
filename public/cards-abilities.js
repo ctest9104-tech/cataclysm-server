@@ -1,5 +1,5 @@
 /* Cataclysm Arcade — per-card ability registry.
-   Each entry is keyed by card id and may define any of:
+   Each entry is keyed by card id and may define any:
      run            : (gp,ctx) => void   // tactic/response on play
      onEnter        : (gp,ctx) => void   // fighter enters play (ctx.src=uid)
      onDeath        : (gp,ctx) => void   // unit dies
@@ -26,10 +26,6 @@
 
 window.CATA_ABILITIES = {
 
-  /* ═══════════════════════════════════════════════════════════
-     TACTICS — single-effect spells that resolve when played
-  ═══════════════════════════════════════════════════════════ */
-
   // Aha! — Discard a card. Draw two cards.
   'render-mq82m6em': {
     run(gp,ctx){
@@ -42,13 +38,9 @@ window.CATA_ABILITIES = {
     run(gp,ctx){
       pendTarget(gp,{forId:ctx.pid,prompt:'Boom!: deal damage to which Fighter?',filter:fighterTargetFilter()},(g,t)=>{
         if(!t)return;
-        /* Enhancements you own: +1 atk counters, wielded weapons (the weapon itself), Fortifications */
         const enhancements=g.p[ctx.pid].board.filter(u=>{const i=g.inst[u];if(!i)return false;const c=CARDS[i.cid];
-          /* A weapon you own (wielded or unwielded) is an enhancement */
           if(c&&c.type==='weapon')return true;
-          /* A unit with +1 atk counters has a counter enhancement */
           if(i.counters&&i.counters.atk>0)return true;
-          /* A unit serving as a fortification target */
           return false;
         });
         if(!enhancements.length){dealDamage(g,t,2);return;}
@@ -210,10 +202,6 @@ window.CATA_ABILITIES = {
     }
   },
 
-  /* ═══════════════════════════════════════════════════════════
-     RESPONSES — instant-speed effects
-  ═══════════════════════════════════════════════════════════ */
-
   // Autopilot — Wield up to one of your Weapons to target Fighter. Draw a card.
   'render-mq82n30v': {
     run(gp,ctx){
@@ -272,7 +260,7 @@ window.CATA_ABILITIES = {
   'render-mq83hfj9': {
     run(gp,ctx){
       pendTarget(gp,{forId:ctx.pid,prompt:'Rope-a-Dope: +2 Health to whom?',filter:bossOrFighterFilter()},(g,t1)=>{
-        healInst(g,t1,2);
+        gainHealth(g,t1,2);
         pendTarget(g,{forId:ctx.pid,prompt:'Rope-a-Dope: +3 Attack this level to whom?',filter:bossOrFighterFilter()},(g2,t2)=>setTempAtk(g2,t2,3));
       });
     }
@@ -301,14 +289,10 @@ window.CATA_ABILITIES = {
     }
   },
 
-  // Stay Hydrated — Target B/F gains 2 Health.
+  // Stay Hydrated — Target Boss or Fighter gains 2 Health.
   'render-mq83o5fa': {
-    run(gp,ctx){pendTarget(gp,{forId:ctx.pid,prompt:'Stay Hydrated: heal 2 to whom?',filter:bossOrFighterFilter()},(g,t)=>healInst(g,t,2));}
+    run(gp,ctx){pendTarget(gp,{forId:ctx.pid,prompt:'Stay Hydrated: +2 Health to whom?',filter:bossOrFighterFilter()},(g,t)=>gainHealth(g,t,2));}
   },
-
-  /* ═══════════════════════════════════════════════════════════
-     FIGHTERS — passive / static / triggered abilities
-  ═══════════════════════════════════════════════════════════ */
 
   // Free Vector — When dies, draw a card.
   'DS1-023': {onDeath(gp,ctx){drawN(gp,ctx.pid,1);}},
@@ -347,7 +331,7 @@ window.CATA_ABILITIES = {
 
   // Constance — When enters play, gains 1 Health for each other Fighter on your team.
   'render-mq82smh7': {
-    onEnter(gp,ctx){const n=myFighters(gp,ctx.pid).filter(u=>u!==ctx.src).length;const i=gp.inst[ctx.src];i.maxHp+=n;i.hp+=n;log(gp,'Constance gains '+n+' Health (1 per other Fighter).');}
+    onEnter(gp,ctx){const n=myFighters(gp,ctx.pid).filter(u=>u!==ctx.src).length;if(n>0)gainHealth(gp,ctx.src,n); else log(gp,'Constance gains no Health (no other Fighters).');}
   },
 
   // Eliza, Do Little — +2 Attack as long as you have a Shifter on your team.
@@ -369,7 +353,7 @@ window.CATA_ABILITIES = {
   },
 
   // Fishhooks — Enforcer (kw already auto-tagged). When enters, +1 atk to all opposing Fighters.
-  // Card text: "Enforcer (...). When Fishhooks enters play, opposing Fighters gain +1 Attack this level." 
+  // Card text: "Enforcer (...). When Fishhooks enters play, opposing Fighters gain +1 Attack this level."
   // (interpretation may vary)
   'render-mq82yuv1': {
     onEnter(gp,ctx){
@@ -491,11 +475,11 @@ window.CATA_ABILITIES = {
 
   // Squatch — +1 atk vs Mystics; Mystics get -1 atk attacking him. (latter is harder; document)
   'render-mq83niqy': {
-    /* attacker-side and defender-side modifiers are not in engine hooks today; left for next pass */
+
   },
 
   // Tube Steak — Response ⊙: Block. (Keyword Block already automated; activated keyword is metadata only.)
-  'render-mq83t4ah': {/* Block kw handled via engine target filter */},
+  'render-mq83t4ah': {},
 
   // Turner — When enters, +1 atk counter on target Survivor Fighter.
   'render-mq83t4ak': {
@@ -533,19 +517,13 @@ window.CATA_ABILITIES = {
   // Dreyver, Terminarch — When attacks, you may pay ① to deal 1 damage to target B/F (sketch).
   // Without exact text confirmed, leaving as informational.
 
-  // ───────── Weapons that automate via atkMod ─────────
-  // Murkgod Pendant (atkMod 0), Sky Axe Restored (atkMod 2), Swiftpack (Agility kw),
+    // Murkgod Pendant (atkMod 0), Sky Axe Restored (atkMod 2), Swiftpack (Agility kw),
   // Swiftpack 1999 (Agility kw, +2 atkMod), Effin' Slingshot (+1), all auto via cards-data.js fields.
   // Dog-Eared Passage, Data Spike, Blast Scanner, Sword from Nowhere — complex, next pass.
 
 };
 
-/* ═══════════════════════════════════════════════════════════
-   PHASE 2 — Bosses, Weapons, Phantasmal cards, complex Fighters
-═══════════════════════════════════════════════════════════ */
 Object.assign(window.CATA_ABILITIES, {
-
-  /* ─────────── BOSSES ─────────── */
 
   // Blades, Triumphant — When attacks, if 3+ Fighters, draw a card. ④⊙: look at top 4, may play one.
   'render-mq82ocja': {
@@ -650,8 +628,6 @@ Object.assign(window.CATA_ABILITIES, {
     _info:'On any discard \u2192 1 dmg to all opposing B/F (manual via GM or future hook).'
   },
 
-  /* ─────────── WEAPONS ─────────── */
-
   // Blast Scanner — When wielded, stun target opposing Fighter.
   'render-mq82od0q': {
     onWield(gp,ctx){pendTarget(gp,{forId:ctx.pid,prompt:'Blast Scanner: stun which opposing Fighter?',filter:opposingFighterFilter(ctx.pid)},(g,t)=>{stunInstance(g,t);});}
@@ -712,7 +688,7 @@ Object.assign(window.CATA_ABILITIES, {
 
   // Sword from Nowhere — Wielder +X Attack = # Tactic/Response in discard. ②, destroy: return T/R from discard.
   'render-mq83pdq7': {
-    /* +X computed when looked up via dynamic check from wielder's perspective */
+
     weaponActivated:[{label:'② Destroy: return T/R from discard',cost:{tap:true,coins:2,sacrifice:true},run(gp,ctx){
       const trs=gp.p[ctx.pid].grave.filter(u=>{const c=CARDS[gp.inst[u].cid];return c&&(c.type==='tactic'||c.type==='response');});
       if(!trs.length){log(gp,'No T/R in discard.');return;}
@@ -725,8 +701,6 @@ Object.assign(window.CATA_ABILITIES, {
     _info:'Wielder becomes any faction on attack (manual via GM faction tag).'
   },
 
-  /* ─────────── COMPLEX FIGHTERS ─────────── */
-
   // Ada, Relict Fighter — +1 atk per enhanced B/F on your team. Response ②: Fortify.
   'render-mq82m6zt': {
     dynamicAtkBonus(gp,uid){
@@ -737,12 +711,12 @@ Object.assign(window.CATA_ABILITIES, {
       });
       return n;
     }
-    /* Fortify keyword auto-detected; engine handles fortifyInstead */
+
   },
 
   // Ahna, Demodulator — Bosses/Fighters that deal damage to Ahna become stunned (and don't unstun next level).
   'render-mq82mt2o': {
-    /* The damage-source-stun isn't a normal engine hook. Implement via onDamaged. */
+
     onDamaged(gp,uid,sourceUid){if(sourceUid&&gp.inst[sourceUid])stunInstance(gp,sourceUid);},
     activated:[{label:'② Stun Fighter',cost:{tap:true,coins:2},run(gp,ctx){pendTarget(gp,{forId:ctx.pid,prompt:'Ahna: stun which Fighter?',filter:fighterTargetFilter()},(g,t)=>{stunInstance(g,t);});}}]
   },
@@ -758,7 +732,7 @@ Object.assign(window.CATA_ABILITIES, {
   },
 
   // Bobby Brushbacks — Determination kw (engine auto). Vanilla otherwise.
-  'render-mq82ozdt': {/* Determination flag set via ingestCard text scan */},
+  'render-mq82ozdt': {},
 
   // Clatter, Cornered — When damaged by attack, deals 1 dmg back to attacker. Response ①⊙: Block.
   'render-mq82rspr': {
@@ -794,12 +768,12 @@ Object.assign(window.CATA_ABILITIES, {
 
   // Dette, Quickener — When becomes Phantasmal, target ally Fighter gains 2 HP. ①: Phantasmal.
   'render-mq82ueab': {
-    activated:[{label:'① Become Phantasmal',cost:{coins:1},run(gp,ctx){const i=gp.inst[ctx.src];if(!i.phantasmal){i.phantasmal=true;i.counters=i.counters||{};i.counters.atk=(i.counters.atk||0)+1;log(gp,'Dette becomes Phantasmal.');pendTarget(gp,{forId:ctx.pid,prompt:'Dette: +2 HP to which ally Fighter?',filter:i2=>i2.kind==='fighter'&&i2.owner===ctx.pid},(g,t)=>{if(t){const ti=g.inst[t];ti.maxHp+=2;ti.hp+=2;log(g,CARDS[ti.cid].name+' +2 Max HP.');}});}}}]
+    activated:[{label:'① Become Phantasmal',cost:{coins:1},run(gp,ctx){const i=gp.inst[ctx.src];if(!i.phantasmal){i.phantasmal=true;i.counters=i.counters||{};i.counters.atk=(i.counters.atk||0)+1;log(gp,'Dette becomes Phantasmal.');pendTarget(gp,{forId:ctx.pid,prompt:'Dette: +2 HP to which ally Fighter?',filter:i2=>i2.kind==='fighter'&&i2.owner===ctx.pid},(g,t)=>{if(t)gainHealth(g,t,2);});}}}]
   },
 
   // Diffin, Slow Hand — Can't attack unless you have a Fighter with 5+ HP. Response ①⊙: Block.
   'render-mq82up5x': {
-    /* Attack-restriction not in engine — partial info note. Block kw auto. */
+
     _info:'Cannot attack without 5+ HP Fighter on team \u2014 GM enforce if violated.'
   },
 
@@ -818,7 +792,7 @@ Object.assign(window.CATA_ABILITIES, {
 
   // Father, Annihilator — wields weapons for no cost. Response ②, destroy: return Weapon from discard to play.
   'render-mq82yhl3': {
-    /* "no cost to wield" → covered if engine wielding doesn't charge, which it doesn't by default */
+
     activated:[{label:'② Destroy: return Weapon from discard',cost:{coins:2,sacrifice:true},run(gp,ctx){
       const ws=gp.p[ctx.pid].grave.filter(u=>(CARDS[gp.inst[u].cid]||{}).type==='weapon');
       if(!ws.length){log(gp,'No Weapon in discard.');return;}
@@ -889,7 +863,7 @@ Object.assign(window.CATA_ABILITIES, {
 
   // Lacey, Bonesaw Healer — When enters, roll d6. ≤3: +1 atk on each Fighter on team. >3: each ally heals 1.
   'render-mq835xsc': {
-    onEnter(gp,ctx){const r=rollDie(6);log(gp,'Lacey rolls a '+r+'.');if(r<=3)myFighters(gp,ctx.pid).forEach(u=>addCounter(gp,u,'atk',1));else eachAlly(gp,ctx.pid,u=>healInst(gp,u,1));}
+    onEnter(gp,ctx){const r=rollDie(6);log(gp,'Lacey rolls a '+r+'.');if(r<=3)myFighters(gp,ctx.pid).forEach(u=>addCounter(gp,u,'atk',1));else eachAlly(gp,ctx.pid,u=>gainHealth(gp,u,1));}
   },
 
   // Lyra, Silken Assassin — If revealed from deck, draw a card. Response ⊙: Block.
@@ -971,8 +945,6 @@ Object.assign(window.CATA_ABILITIES, {
     dynamicAtkBonus(gp,uid){const i=gp.inst[uid];if(!i)return 0;let n=0;eachAlly(gp,i.owner,u=>{if(u===uid)return;const ai=gp.inst[u];if(ai&&((ai.counters&&ai.counters.atk>0)||(ai.wielded&&ai.wielded.length)))n++;});return n;}
   },
 
-  /* ─────────── REMAINING TACTICS / RESPONSES ─────────── */
-
   // Don't Bury Me... — Heal 3 + remove all -1 atk counters; if removed, draw.
   'render-mq82v2l0': {
     run(gp,ctx){pendTarget(gp,{forId:ctx.pid,prompt:'Don\u2019t Bury Me: heal 3 to whom?',filter:bossOrFighterFilter()},(g,t)=>{if(!t)return;healInst(g,t,3);const i=g.inst[t];if(i.counters&&i.counters.atk<0){const removed=i.counters.atk;i.counters.atk=0;drawN(g,ctx.pid,1);log(g,'Removed '+(-removed)+' -1 Atk counters; drew a card.');}});}
@@ -993,13 +965,13 @@ Object.assign(window.CATA_ABILITIES, {
     run(gp,ctx){
       const top=gp.p[ctx.pid].deck.slice(0,5);
       log(gp,'Give The Signal reveals top 5: '+top.map(u=>CARDS[gp.inst[u].cid].name).join(', '));
-      /* Identify Synth Fighters among the 5 */
+
       const synths=top.filter(u=>{const c=CARDS[gp.inst[u].cid];return c&&c.type==='fighter'&&c.faction==='synth';});
       const handled=new Set();
-      /* Sequential per-Synth Fighter choice */
+
       const askNext=(g,idx)=>{
         if(idx>=synths.length){
-          /* All choices made; rest of revealed top goes to bottom shuffled */
+
           const remaining=top.filter(u=>!handled.has(u)&&g.p[ctx.pid].deck.includes(u));
           bottomShuffle(g,ctx.pid,remaining);
           return;
@@ -1012,7 +984,7 @@ Object.assign(window.CATA_ABILITIES, {
           {label:'Skip (goes to bottom of deck)',value:''}
         ]},(g2,choice)=>{
           if(choice==='play'){
-            /* Move to board, fire onEnter */
+
             g2.p[ctx.pid].deck=g2.p[ctx.pid].deck.filter(x=>x!==u);
             g2.p[ctx.pid].board.push(u);
             resetInstance(g2,u);
@@ -1020,7 +992,7 @@ Object.assign(window.CATA_ABILITIES, {
             handled.add(u);
             log(g2,'  → Played '+c.name+' to board.');
           } else if(choice==='fort'){
-            /* Fortify: place under a Synth ally, that Synth gains HP equal to this Fighter's starting HP */
+
             const synthAllies=g2.p[ctx.pid].board.concat([g2.p[ctx.pid].boss]).filter(au=>{if(!au||au===u)return false;const ai=g2.inst[au];if(!ai)return false;const ac=CARDS[ai.cid];return ac&&ac.faction==='synth'&&(ac.type==='fighter'||ac.type==='boss');});
             if(!synthAllies.length){log(g2,'  → No Synth to Fortify under; skipped.');askNext(g2,idx+1);return;}
             pendPick(g2,{forId:ctx.pid,prompt:'Fortify '+c.name+' under which Synth?',options:synthAllies.map(au=>({label:CARDS[g2.inst[au].cid].name+' (HP '+g2.inst[au].hp+')',value:au}))},(g3,host)=>{
@@ -1133,9 +1105,6 @@ Object.assign(window.CATA_ABILITIES, {
 
 });
 
-/* ═══════════════════════════════════════════════════════════
-   PHASE 3 — Remaining Fighters + edge cases
-═══════════════════════════════════════════════════════════ */
 Object.assign(window.CATA_ABILITIES, {
 
   // Reika, First Novice — Armor 1 (auto). Response ⊙: Block (kw auto).
@@ -1165,7 +1134,7 @@ Object.assign(window.CATA_ABILITIES, {
   // Sanyang, Unerring — When enters, gain ②. Attack = tokens spent (cap 4).
   'render-mq83iod9': {
     onEnter(gp,ctx){gp.p[ctx.pid].coins+=2;log(gp,'Sanyang: gain ②.');}
-    /* Variable attack cost = X — manual via GM coin spend */
+
   },
 
   // Shadowcaster — Enforcer (auto). ①: Phantasmal.
@@ -1212,7 +1181,7 @@ Object.assign(window.CATA_ABILITIES, {
     onEnter(gp,ctx){pendTarget(gp,{forId:ctx.pid,prompt:'Vengeance de Milo: damage to which Fighter?',filter:fighterTargetFilter()},(g,t)=>{if(t){const fac=(CARDS[g.inst[t].cid]||{}).faction;dealDamage(g,t,fac==='shifter'?4:2);}});}
   },
 
-  // Vigo the Sharp (already added in Phase 1) — duplicate-safe.
+  // Vigo the Sharp  — duplicate-safe.
 
   // WillyB, Newcomer — flavor only.
   'render-mq83vunp': {},
@@ -1287,10 +1256,6 @@ Object.assign(window.CATA_ABILITIES, {
   },
 });
 
-/* ═══════════════════════════════════════════════════════════
-   PHASE 5 — wire remaining hooks (discard cross-trigger,
-   when-attacked, visible dice, attack-cost mods)
-═══════════════════════════════════════════════════════════ */
 Object.assign(window.CATA_ABILITIES, {
 
   // Tryp, Timelost — Whenever a player discards 1+ cards, deal 1 dmg to all opposing B/F.
@@ -1353,7 +1318,7 @@ Object.assign(window.CATA_ABILITIES, {
       rollDieVisible(6,'Lacey rolls a d6',(r)=>{
         act(rm=>{const gp2=rm.game;log(gp2,'Lacey rolls a '+r+'.');
           if(r<=3)myFighters(gp2,ctx.pid).forEach(u=>addCounter(gp2,u,'atk',1));
-          else eachAlly(gp2,ctx.pid,u=>healInst(gp2,u,1));
+          else eachAlly(gp2,ctx.pid,u=>gainHealth(gp2,u,1));
         });
       });
     }
@@ -1381,27 +1346,20 @@ Object.assign(window.CATA_ABILITIES, {
 
 });
 
-/* ═══════════════════════════════════════════════════════════
-   PHASE 6 — Final mechanics: linked Fighters, Stat-copy,
-   Whiskers temp-faction, Hot Mike reveal, Mimeoscoped token,
-   Squatch/Piecebook attacker-side mods, Mayhem Fist scaling,
-   Sanyang X-cost attack
-═══════════════════════════════════════════════════════════ */
 Object.assign(window.CATA_ABILITIES, {
 
   // Charlotte, Nightbringer — When Charlotte defeats a Fighter, may link it.
   // When Charlotte dies, all linked Fighters return to play.
   'render-mq82qy7i': {
     onAttackKill(gp,ctx){
-      /* Only Fighters can be linked (not Bosses or tokens) */
+
       const dC=CARDS[ctx.defenderCid];if(!dC||dC.type!=='fighter')return;
       pendPick(gp,{forId:ctx.pid,prompt:'Charlotte: link '+dC.name+'? (returns to play when Charlotte dies)',options:[{label:'Yes, link',value:'y'},{label:'No, leave in discard',value:''}]},(g,v)=>{
         if(v==='y')linkFighter(g,ctx.src,ctx.defenderUid);
       });
     },
     onDeath(gp,ctx){
-      /* The src is Charlotte's uid via ctx — but onDeath ctx historically is {pid}; we need the dying uid */
-      /* Walk every instance to find Charlottes with linked fighters that just died */
+
       Object.keys(gp.inst).forEach(uid=>{const i=gp.inst[uid];if(i&&i.cid==='render-mq82qy7i'&&i.hp<=0&&i.linkedFighters&&i.linkedFighters.length)returnLinkedFighters(gp,uid);});
     }
   },
@@ -1415,7 +1373,7 @@ Object.assign(window.CATA_ABILITIES, {
       ]},(g,fac)=>{
         if(!fac)return;
         g.inst[wielderUid].tempFaction=fac;
-        /* +1 atk per faction on team */
+
         const factions=new Set();
         eachAlly(g,pid,u=>{const fc=CARDS[g.inst[u].cid];if(fc&&fc.faction)factions.add(g.inst[u].tempFaction||fc.faction);});
         const bonus=factions.size;setTempAtk(g,wielderUid,bonus);
@@ -1433,7 +1391,7 @@ Object.assign(window.CATA_ABILITIES, {
         if(t)copyStatsOnto(g,ctx.src,t);
       });
     },
-    /* Stat's effective attack value mirrors the model card's */
+
     dynamicAtk(gp,uid){
       const i=gp.inst[uid];if(!i||!i._copyOf)return undefined;
       const modelC=CARDS[i._copyOf];if(!modelC)return undefined;
@@ -1462,11 +1420,11 @@ Object.assign(window.CATA_ABILITIES, {
       if(!myF.length){log(gp,'Mimeoscoped: no Fighter to copy.');return;}
       pendTarget(gp,{forId:ctx.pid,prompt:'Mimeoscoped: copy which ally Fighter (token, dies end of level)?',filter:i=>i.kind==='fighter'&&i.owner===ctx.pid},(g,t)=>{
         if(!t)return;
-        /* Create a real token in CARDS keyed by a fresh id, mirroring the target's stats */
+
         const tInst=g.inst[t];const tC=CARDS[tInst.cid];if(!tC)return;
         const tokId='_mimeo_'+Date.now()+'_'+Math.floor(Math.random()*99999);
         CARDS[tokId]=Object.assign({},tC,{id:tokId,name:'Mimeoscope ('+tC.name+')',type:'token',kind:'fighter',diesEndOfLevel:true});
-        /* Spawn an instance via the engine's helper */
+
         const newUid=newInstance(g,tokId,ctx.pid);
         g.p[ctx.pid].board.push(newUid);
         resetInstance(g,newUid);
@@ -1499,10 +1457,10 @@ Object.assign(window.CATA_ABILITIES, {
        to its wielder (a new convention: weapon.atkBonusForWielder(gp, wielderUid)). */
     atkBonusForWielder(gp,wielderUid){return myFighters(gp,gp.inst[wielderUid].owner).filter(u=>(CARDS[gp.inst[u].cid]||{}).faction==='survivor').length;},
     atkCostModForAlly(gp,uid,sourceUid){
-      /* This is on the WEAPON, not an ally — but the wielder will read this via a special check */
+
       return 0;
     },
-    wielderAtkCostMod:1  /* read by effectiveAtkCost extension below */
+    wielderAtkCostMod:1
   },
 
   // Sanyang, Unerring — On attack, prompt for tokens to spend (1..4); Sanyang's atk = that amount.
@@ -1513,7 +1471,7 @@ Object.assign(window.CATA_ABILITIES, {
       if(max<=0){log(gp,'Sanyang attacks for 0 (no coins to spend).');gp.inst[ctx.attacker].tempAtk=0;finishAttackDamage(gp,ctx);return;}
       pendPick(gp,{forId:ctx.pid,prompt:'Sanyang attacks: spend how many coins for damage? (max '+max+')',options:Array.from({length:max},(_,i)=>({label:(i+1)+' \u29bb',value:String(i+1)})).concat([{label:'0 (no damage)',value:'0'}])},(g,v)=>{
         const n=parseInt(v||'0',10);g.p[ctx.pid].coins-=n;
-        g.inst[ctx.attacker].tempAtk=(g.inst[ctx.attacker].tempAtk||0)+n; /* hack: atk via tempAtk */
+        g.inst[ctx.attacker].tempAtk=(g.inst[ctx.attacker].tempAtk||0)+n;
         log(g,'Sanyang spends '+n+' \u29bb for '+n+' damage.');
         finishAttackDamage(g,ctx);
       });
@@ -1533,6 +1491,6 @@ Object.assign(window.CATA_ABILITIES, {
   },
 
   // Diffin, Slow Hand — attack restriction handled in confirmAttack; just info.
-  'render-mq82up5x': {/* engine-enforced via diffinCanAttack */},
+  'render-mq82up5x': {},
 
 });
