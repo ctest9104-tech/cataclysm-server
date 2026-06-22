@@ -12,6 +12,10 @@
     <div id="app"></div>
     <!-- Real card database exported from card-studio.html. Loads BEFORE game.js. -->
     <script src="cards-data.js" onerror="console.warn('cards-data.js not found yet — build it in card-studio.html')"></script>
+    <!-- Per-card ability implementations. Loads BEFORE game.js. -->
+    <script src="cards-abilities.js" onerror="console.warn('cards-abilities.js not found — abilities will be manual')"></script>
+    <!-- Pre-built deck library. -->
+    <script src="preset-decks.js" onerror="console.warn('preset-decks.js not found')"></script>
     <script src="game.js"></script>
 </body>
 </html>
