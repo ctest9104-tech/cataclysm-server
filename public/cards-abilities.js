@@ -40,9 +40,29 @@ window.CATA_ABILITIES = {
   // Boom! — Deal 2 damage to target Fighter. You may destroy enhancement → 4 damage.
   'render-mq82pliu': {
     run(gp,ctx){
-      pendTarget(gp,{forId:ctx.pid,prompt:'Boom!: deal 2 damage to which Fighter?',filter:fighterTargetFilter()},(g,t)=>{
-        dealDamage(g,t,2);
-        log(g,'(Manual: may destroy an enhancement to deal 4 instead — use GM panel if so.)');
+      pendTarget(gp,{forId:ctx.pid,prompt:'Boom!: deal damage to which Fighter?',filter:fighterTargetFilter()},(g,t)=>{
+        if(!t)return;
+        /* Enhancements you own: +1 atk counters, wielded weapons (the weapon itself), Fortifications */
+        const enhancements=g.p[ctx.pid].board.filter(u=>{const i=g.inst[u];if(!i)return false;const c=CARDS[i.cid];
+          /* A weapon you own (wielded or unwielded) is an enhancement */
+          if(c&&c.type==='weapon')return true;
+          /* A unit with +1 atk counters has a counter enhancement */
+          if(i.counters&&i.counters.atk>0)return true;
+          /* A unit serving as a fortification target */
+          return false;
+        });
+        if(!enhancements.length){dealDamage(g,t,2);return;}
+        pendPick(g,{forId:ctx.pid,prompt:'Boom!: destroy an enhancement to deal 4 damage instead of 2?',options:[{label:'Yes — pick enhancement to destroy',value:'y'},{label:'No (deal 2)',value:''}]},(g2,choice)=>{
+          if(choice!=='y'){dealDamage(g2,t,2);return;}
+          pendPick(g2,{forId:ctx.pid,prompt:'Boom!: which enhancement to destroy?',options:enhancements.map(u=>({label:CARDS[g2.inst[u].cid].name+(g2.inst[u].counters&&g2.inst[u].counters.atk>0?' (+atk counter)':''),value:u}))},(g3,pick)=>{
+            if(pick){
+              const pi=g3.inst[pick];const pc=CARDS[pi.cid];
+              if(pc.type==='weapon')destroyInstance(g3,pick,{skipFortify:true});
+              else if(pi.counters&&pi.counters.atk>0){pi.counters.atk-=1;log(g3,'Removed +1 atk counter from '+pc.name+'.');}
+              dealDamage(g3,t,4);
+            }else{dealDamage(g3,t,2);}
+          });
+        });
       });
     }
   },
@@ -130,8 +150,21 @@ window.CATA_ABILITIES = {
   // Tooth Extraction — Deal 5 damage divided as you choose among any number of targets.
   'render-mq83rb8z': {
     run(gp,ctx){
-      log(gp,'Tooth Extraction: divide 5 damage. Use GM panel to apply distribution.');
-      pendTarget(gp,{forId:ctx.pid,prompt:'Pick first target (5 dmg, or split via GM)',filter:bossOrFighterFilter()},(g,t)=>dealDamage(g,t,5));
+      const distribute=(g,remaining)=>{
+        if(remaining<=0)return;
+        pendTarget(g,{forId:ctx.pid,prompt:'Tooth Extraction: deal damage to which Boss/Fighter? ('+remaining+' damage left)',filter:bossOrFighterFilter()},(g2,t)=>{
+          if(!t)return;
+          const opts=[];for(let i=1;i<=remaining;i++)opts.push({label:i+' damage'+(i===remaining?' (all remaining)':''),value:String(i)});
+          opts.push({label:'Stop dividing',value:'0'});
+          pendPick(g2,{forId:ctx.pid,prompt:'How much damage to '+(CARDS[g2.inst[t].cid]||{}).name+'? ('+remaining+' left)',options:opts},(g3,v)=>{
+            const n=parseInt(v||'0',10);
+            if(n<=0)return;
+            dealDamage(g3,t,n);
+            if(remaining-n>0)distribute(g3,remaining-n);
+          });
+        });
+      };
+      distribute(gp,5);
     }
   },
 
@@ -621,7 +654,7 @@ Object.assign(window.CATA_ABILITIES, {
 
   // Blast Scanner — When wielded, stun target opposing Fighter.
   'render-mq82od0q': {
-    onWield(gp,ctx){pendTarget(gp,{forId:ctx.pid,prompt:'Blast Scanner: stun which opposing Fighter?',filter:opposingFighterFilter(ctx.pid)},(g,t)=>{g.inst[t].stunned=true;log(g,CARDS[g.inst[t].cid].name+' stunned.');});}
+    onWield(gp,ctx){pendTarget(gp,{forId:ctx.pid,prompt:'Blast Scanner: stun which opposing Fighter?',filter:opposingFighterFilter(ctx.pid)},(g,t)=>{stunInstance(g,t);});}
   },
 
   // Data Spike — Enters with charge counter. Wielder dies → +charge counter. Wielder gets +1 atk per charge.
@@ -665,7 +698,7 @@ Object.assign(window.CATA_ABILITIES, {
 
   // Murkgod Pendant — Wielder gains ②: Transform.
   'render-mq83bebv': {
-    weaponActivated:[{label:'② Transform',cost:{tap:true,coins:2,sacrifice:true},run(gp,ctx){transformInstance(gp,ctx.src,99);}}]
+    weaponActivated:[{label:'② Transform',cost:{tap:true,coins:2,sacrifice:true},run(gp,ctx){transformInstance(gp,ctx.src);}}]
   },
 
   // Sky Axe, Restored — vanilla weapon (atkMod already in data: +2).
@@ -710,8 +743,8 @@ Object.assign(window.CATA_ABILITIES, {
   // Ahna, Demodulator — Bosses/Fighters that deal damage to Ahna become stunned (and don't unstun next level).
   'render-mq82mt2o': {
     /* The damage-source-stun isn't a normal engine hook. Implement via onDamaged. */
-    onDamaged(gp,uid,sourceUid){if(sourceUid&&gp.inst[sourceUid])gp.inst[sourceUid].stunned=true;},
-    activated:[{label:'② Stun Fighter',cost:{tap:true,coins:2},run(gp,ctx){pendTarget(gp,{forId:ctx.pid,prompt:'Ahna: stun which Fighter?',filter:fighterTargetFilter()},(g,t)=>{g.inst[t].stunned=true;log(g,CARDS[g.inst[t].cid].name+' stunned.');});}}]
+    onDamaged(gp,uid,sourceUid){if(sourceUid&&gp.inst[sourceUid])stunInstance(gp,sourceUid);},
+    activated:[{label:'② Stun Fighter',cost:{tap:true,coins:2},run(gp,ctx){pendTarget(gp,{forId:ctx.pid,prompt:'Ahna: stun which Fighter?',filter:fighterTargetFilter()},(g,t)=>{stunInstance(g,t);});}}]
   },
 
   // Axel, Deathracer — Phantasmal → Agility. ①: Phantasmal.
@@ -811,7 +844,7 @@ Object.assign(window.CATA_ABILITIES, {
   // Galen, Nurturer — When enters, target B/F heals 2. ②: Transform.
   'render-mq830mwk': {
     onEnter(gp,ctx){pendTarget(gp,{forId:ctx.pid,prompt:'Galen: heal 2 to whom?',filter:bossOrFighterFilter()},(g,t)=>{if(t)healInst(g,t,2);});},
-    activated:[{label:'② Transform',cost:{coins:2,sacrifice:true},run(gp,ctx){transformInstance(gp,ctx.src,99);}}]
+    activated:[{label:'② Transform',cost:{coins:2,sacrifice:true},run(gp,ctx){transformInstance(gp,ctx.src);}}]
   },
 
   // Gizzard — any-number copies. +1 Atk for each other Gizzard on team.
@@ -819,12 +852,20 @@ Object.assign(window.CATA_ABILITIES, {
     dynamicAtkBonus(gp,uid){const i=gp.inst[uid];if(!i)return 0;return myFighters(gp,i.owner).filter(u=>u!==uid&&gp.inst[u].cid===i.cid).length;}
   },
 
-  // Grammie, Picker-Upper — When enters, may wield any Weapons to her. +1 atk per Weapon wielding.
+  // Grammie, Picker-Upper — When enters, may wield any number of your Weapons to her. +1 atk per Weapon wielding.
   'render-mq832sdi': {
     onEnter(gp,ctx){
       const myWeapons=gp.p[ctx.pid].board.filter(u=>{const i=gp.inst[u];return i&&!i.wieldedBy&&(CARDS[i.cid]||{}).type==='weapon';});
-      myWeapons.forEach(w=>wieldWeapon(gp,w,ctx.src));
-      if(myWeapons.length)log(gp,'Grammie wields '+myWeapons.length+' Weapon(s).');
+      if(!myWeapons.length)return;
+      const askNext=(g,idx)=>{
+        if(idx>=myWeapons.length)return;
+        const w=myWeapons[idx];const wc=CARDS[g.inst[w].cid];
+        pendPick(g,{forId:ctx.pid,prompt:'Grammie: wield '+wc.name+' to her?',options:[{label:'Yes',value:'y'},{label:'Skip',value:''}]},(g2,v)=>{
+          if(v==='y'){wieldWeapon(g2,w,ctx.src);}
+          askNext(g2,idx+1);
+        });
+      };
+      askNext(gp,0);
     },
     dynamicAtkBonus(gp,uid){const i=gp.inst[uid];return((i&&i.wielded)||[]).length;}
   },
@@ -843,7 +884,7 @@ Object.assign(window.CATA_ABILITIES, {
   'render-mq835m7t': {
     onEnter(gp,ctx){const opps=gp.order.filter(p=>p!==ctx.pid&&!gp.p[p].defeated);if(opps.length===1)pendDiscardOptional(gp,{pid:opps[0]},'Kupp Lightpaws: discard a card',()=>{});
       else if(opps.length)pendPick(gp,{forId:ctx.pid,prompt:'Kupp: which opponent discards?',options:opps.map(p=>({label:gp.p[p].name,value:p}))},(g,pid)=>pendDiscardOptional(g,{pid},'discard',()=>{}));},
-    activated:[{label:'② Transform',cost:{coins:2,sacrifice:true},run(gp,ctx){transformInstance(gp,ctx.src,99);}}]
+    activated:[{label:'② Transform',cost:{coins:2,sacrifice:true},run(gp,ctx){transformInstance(gp,ctx.src);}}]
   },
 
   // Lacey, Bonesaw Healer — When enters, roll d6. ≤3: +1 atk on each Fighter on team. >3: each ally heals 1.
@@ -895,8 +936,8 @@ Object.assign(window.CATA_ABILITIES, {
 
   // Orson, Quickstinger — When enters, stun target Fighter. ②: Transform.
   'render-mq83cxwt': {
-    onEnter(gp,ctx){pendTarget(gp,{forId:ctx.pid,prompt:'Orson: stun which Fighter?',filter:fighterTargetFilter()},(g,t)=>{if(t){g.inst[t].stunned=true;log(g,CARDS[g.inst[t].cid].name+' stunned.');}});},
-    activated:[{label:'② Transform',cost:{coins:2,sacrifice:true},run(gp,ctx){transformInstance(gp,ctx.src,99);}}]
+    onEnter(gp,ctx){pendTarget(gp,{forId:ctx.pid,prompt:'Orson: stun which Fighter?',filter:fighterTargetFilter()},(g,t)=>{if(t){stunInstance(g,t);}});},
+    activated:[{label:'② Transform',cost:{coins:2,sacrifice:true},run(gp,ctx){transformInstance(gp,ctx.src);}}]
   },
 
   // Pia, Laser Focused — When enters, may destroy an enhancement you own; if so draw a card. Response ②: Fortify.
@@ -917,8 +958,8 @@ Object.assign(window.CATA_ABILITIES, {
   'render-mq83e6ta': {
     onEnter(gp,ctx){
       pendTarget(gp,{forId:ctx.pid,prompt:'Pilskin: stun first Fighter (or skip)',filter:fighterTargetFilter()},(g,t1)=>{
-        if(t1){g.inst[t1].stunned=true;log(g,CARDS[g.inst[t1].cid].name+' stunned.');
-          pendTarget(g,{forId:ctx.pid,prompt:'Stun a different Fighter? (skip ok)',filter:i=>i.kind==='fighter'&&i.uid!==t1},(g2,t2)=>{if(t2){g2.inst[t2].stunned=true;log(g2,CARDS[g2.inst[t2].cid].name+' stunned.');}});
+        if(t1){stunInstance(g,t1);
+          pendTarget(g,{forId:ctx.pid,prompt:'Stun a different Fighter? (skip ok)',filter:i=>i.kind==='fighter'&&i.uid!==t1},(g2,t2)=>{if(t2){stunInstance(g2,t2);}});
         }
       });
     }
@@ -947,25 +988,94 @@ Object.assign(window.CATA_ABILITIES, {
     }
   },
 
-  // Give The Signal — Reveal top 5; for each Synth Fighter, may play or Fortify it.
+  // Give The Signal — Reveal top 5; for each Synth Fighter, may play or Fortify for free; rest go to bottom random.
   'render-mq831dlh': {
     run(gp,ctx){
       const top=gp.p[ctx.pid].deck.slice(0,5);
-      const synthF=top.filter(u=>{const c=CARDS[gp.inst[u].cid];return c&&c.type==='fighter'&&c.faction==='synth';});
-      log(gp,'Give The Signal reveals: '+top.map(u=>CARDS[gp.inst[u].cid].name).join(', '));
-      synthF.forEach(u=>{gp.p[ctx.pid].deck=gp.p[ctx.pid].deck.filter(x=>x!==u);gp.p[ctx.pid].hand.push(u);log(gp,'  → '+CARDS[gp.inst[u].cid].name+' to hand.');});
-      bottomShuffle(gp,ctx.pid,top.filter(u=>!synthF.includes(u)));
+      log(gp,'Give The Signal reveals top 5: '+top.map(u=>CARDS[gp.inst[u].cid].name).join(', '));
+      /* Identify Synth Fighters among the 5 */
+      const synths=top.filter(u=>{const c=CARDS[gp.inst[u].cid];return c&&c.type==='fighter'&&c.faction==='synth';});
+      const handled=new Set();
+      /* Sequential per-Synth Fighter choice */
+      const askNext=(g,idx)=>{
+        if(idx>=synths.length){
+          /* All choices made; rest of revealed top goes to bottom shuffled */
+          const remaining=top.filter(u=>!handled.has(u)&&g.p[ctx.pid].deck.includes(u));
+          bottomShuffle(g,ctx.pid,remaining);
+          return;
+        }
+        const u=synths[idx];
+        const c=CARDS[g.inst[u].cid];
+        pendPick(g,{forId:ctx.pid,prompt:'Give The Signal: what to do with '+c.name+' (Synth Fighter)?',options:[
+          {label:'Play to board (free)',value:'play'},
+          {label:'Fortify (free) — adds HP to a Synth on your team',value:'fort'},
+          {label:'Skip (goes to bottom of deck)',value:''}
+        ]},(g2,choice)=>{
+          if(choice==='play'){
+            /* Move to board, fire onEnter */
+            g2.p[ctx.pid].deck=g2.p[ctx.pid].deck.filter(x=>x!==u);
+            g2.p[ctx.pid].board.push(u);
+            resetInstance(g2,u);
+            fireOnEnter(g2,u,ctx.pid);
+            handled.add(u);
+            log(g2,'  → Played '+c.name+' to board.');
+          } else if(choice==='fort'){
+            /* Fortify: place under a Synth ally, that Synth gains HP equal to this Fighter's starting HP */
+            const synthAllies=g2.p[ctx.pid].board.concat([g2.p[ctx.pid].boss]).filter(au=>{if(!au||au===u)return false;const ai=g2.inst[au];if(!ai)return false;const ac=CARDS[ai.cid];return ac&&ac.faction==='synth'&&(ac.type==='fighter'||ac.type==='boss');});
+            if(!synthAllies.length){log(g2,'  → No Synth to Fortify under; skipped.');askNext(g2,idx+1);return;}
+            pendPick(g2,{forId:ctx.pid,prompt:'Fortify '+c.name+' under which Synth?',options:synthAllies.map(au=>({label:CARDS[g2.inst[au].cid].name+' (HP '+g2.inst[au].hp+')',value:au}))},(g3,host)=>{
+              if(host){
+                const hostI=g3.inst[host];const addHp=c.hp||0;
+                hostI.maxHp+=addHp;hostI.hp+=addHp;
+                g3.p[ctx.pid].deck=g3.p[ctx.pid].deck.filter(x=>x!==u);
+                g3.inst[u].fortifiedUnder=host;
+                handled.add(u);
+                log(g3,'  → '+c.name+' Fortified under '+CARDS[hostI.cid].name+' (+'+addHp+' HP).');
+              }
+              askNext(g3,idx+1);
+            });
+            return;
+          } else {
+            log(g2,'  → Skipped '+c.name+'.');
+          }
+          askNext(g2,idx+1);
+        });
+      };
+      askNext(gp,0);
     }
   },
 
-  // Go to the Videotape — Look at top 4, reveal any Survivor Fighters to hand, rest bottom random.
+  // Go to the Videotape — Look at top 4. You may reveal any number of Survivor Fighters to hand; rest bottom random.
   'render-mq831q38': {
     run(gp,ctx){
       const top=gp.p[ctx.pid].deck.slice(0,4);
       const survF=top.filter(u=>{const c=CARDS[gp.inst[u].cid];return c&&c.type==='fighter'&&c.faction==='survivor';});
-      log(gp,'Videotape reveals: '+top.map(u=>CARDS[gp.inst[u].cid].name).join(', '));
-      survF.forEach(u=>{gp.p[ctx.pid].deck=gp.p[ctx.pid].deck.filter(x=>x!==u);gp.p[ctx.pid].hand.push(u);log(gp,'  → '+CARDS[gp.inst[u].cid].name+' to hand.');});
-      bottomShuffle(gp,ctx.pid,top.filter(u=>!survF.includes(u)));
+      log(gp,'Videotape reveals top 4: '+top.map(u=>CARDS[gp.inst[u].cid].name).join(', '));
+      const handled=new Set();
+      const askNext=(g,idx)=>{
+        if(idx>=survF.length){
+          const remaining=top.filter(u=>!handled.has(u)&&g.p[ctx.pid].deck.includes(u));
+          bottomShuffle(g,ctx.pid,remaining);
+          return;
+        }
+        const u=survF[idx];
+        const c=CARDS[g.inst[u].cid];
+        pendPick(g,{forId:ctx.pid,prompt:'Videotape: take '+c.name+' (Survivor Fighter) to hand?',options:[
+          {label:'Yes — take to hand',value:'y'},
+          {label:'Leave (goes to bottom)',value:''}
+        ]},(g2,v)=>{
+          if(v==='y'){
+            g2.p[ctx.pid].deck=g2.p[ctx.pid].deck.filter(x=>x!==u);
+            g2.p[ctx.pid].hand.push(u);
+            handled.add(u);
+            log(g2,'  → Took '+c.name+' to hand.');
+          } else {
+            log(g2,'  → Left '+c.name+' in deck.');
+          }
+          askNext(g2,idx+1);
+        });
+      };
+      askNext(gp,0);
     }
   },
 
