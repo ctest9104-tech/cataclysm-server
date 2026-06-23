@@ -1,5 +1,5 @@
 /* Cataclysm Arcade — per-card ability registry.
-   Each entry is keyed by card id and may define any:
+   Each entry is keyed by card id and may define any of:
      run            : (gp,ctx) => void   // tactic/response on play
      onEnter        : (gp,ctx) => void   // fighter enters play (ctx.src=uid)
      onDeath        : (gp,ctx) => void   // unit dies
