@@ -536,16 +536,64 @@ function validDefenders(gp,attackerOwner,attackerCid){
   });
   return targets;
 }
+function nextResponsePriority(gp,attackerPid,passed){
+  const order=gp.order.filter(p=>!gp.p[p].defeated);
+  const startIdx=order.indexOf(attackerPid);
+  if(startIdx<0)return null;
+  for(let i=1;i<=order.length;i++){
+    const pid=order[(startIdx+i)%order.length];
+    if(pid===attackerPid)continue;
+    if(passed.includes(pid))continue;
+    return pid;
+  }
+  return null;
+}
+
 function declareAttack(gp,atkUid,defUid,ctxPid){
   const cost=effectiveAtkCost(gp,atkUid);if(!spendCoins(gp,ctxPid,cost))return false;
   gp.inst[atkUid].actedCount=(gp.inst[atkUid].actedCount||0)+1;gp.passedSet=[];
+  gp.pendingAttack={attacker:atkUid,defender:defUid,attackerOwner:ctxPid};
   showAttackFlash(atkUid,defUid);
   fireOnAttacked(gp,defUid,atkUid);
-  const ctx={pid:ctxPid,attacker:atkUid,defender:defUid};
-  const c=CARDS[gp.inst[atkUid].cid];
-  if(c.preAttack){c.preAttack(gp,ctx);return true;}
+  const nextPri=nextResponsePriority(gp,ctxPid,[]);
+  if(!nextPri)return resolvePendingAttack(gp);
+  const defenderPid=gp.inst[defUid]?gp.inst[defUid].owner:null;
+  gp.responseWindow={
+    type:'attack',
+    attackerUid:atkUid,defenderUid:defUid,
+    attackerPid:ctxPid,defenderPid,
+    priority:nextPri,passed:[]
+  };
+  return true;
+}
+
+function resolvePendingAttack(gp){
+  if(gp.responseWindow)gp.responseWindow=null;
+  if(!gp.pendingAttack)return true;
+  const ctx={pid:gp.pendingAttack.attackerOwner,attacker:gp.pendingAttack.attacker,defender:gp.pendingAttack.defender};
+  gp.pendingAttack=null;
+  const ai=gp.inst[ctx.attacker];if(!ai||ai.hp<=0)return true;
+  const di=gp.inst[ctx.defender];if(!di||di.hp<=0)return true;
+  const ac=CARDS[ai.cid];
+  if(ac&&ac.preAttack){ac.preAttack(gp,ctx);return true;}
   finishAttackDamage(gp,ctx);return true;
 }
+
+window.passResponse=async function(){
+  await act(r=>{
+    const gp=r.game;
+    if(!gp.responseWindow)return;
+    if(gp.responseWindow.priority!==S.myId)return;
+    gp.responseWindow.passed.push(S.myId);
+    const next=nextResponsePriority(gp,gp.responseWindow.attackerPid,gp.responseWindow.passed);
+    if(!next){
+      resolvePendingAttack(gp);
+      if(!gp.pending&&!gp.responseWindow)nextTurn(gp);
+    } else {
+      gp.responseWindow.priority=next;
+    }
+  });
+};
 function combatDamage(gp,atkUid,defUid){
   const s=instSummary(gp,atkUid);if(!s)return 0;
   let dmg=s.atk;
@@ -631,7 +679,12 @@ window.confirmMulligan=async function(){
 window.cancelMulligan=function(){S.mullSel=null;S.mullOpen=false;render();};
 window.playHandCard=async function(u){
   await act(r=>{const gp=r.game;const pid=S.myId;const c=CARDS[gp.inst[u].cid];
-    if(gp.curIdx!==gp.order.indexOf(pid)&&c.speed!=='instant')return alert('Not your turn.');
+    if(gp.responseWindow){
+      if(gp.responseWindow.priority!==pid)return alert('Another player has response priority.');
+      if(c.type!=='response')return alert('Only Response cards can be played during an attack response window.');
+    } else if(gp.curIdx!==gp.order.indexOf(pid)&&c.speed!=='instant'){
+      return alert('Not your turn.');
+    }
     const playCost=(c.type==='fighter'||c.type==='weapon')?0:(c.cost||0);
     if(gp.p[pid].coins<playCost)return alert('Not enough coins.');
     if(c.type==='fighter'){if((c.level||0)>gp.level)return alert('Level requirement not met (need Lvl '+(c.level)+').');
@@ -649,8 +702,12 @@ window.playHandCard=async function(u){
     else{spendCoins(gp,pid,playCost);moveZone(gp,pid,u,'hand','grave');gp.passedSet=[];
       if(c.run){log(gp,gp.p[pid].name+' plays '+c.name+'.');c.run(gp,{pid,src:u});}
       else log(gp,gp.p[pid].name+' plays '+c.name+' \u2014 GM mode for manual effects, or right-click card to read.');}
+    if(gp.responseWindow&&c.type==='response'){
+      if(!gp.pendingAttack){gp.responseWindow=null;}
+      else if(!gp.pending){resolvePendingAttack(gp);}
+    }
     gp.p[pid].hasActed=true;
-    if(!gp.pending)nextTurn(gp);});
+    if(!gp.pending&&!gp.responseWindow)nextTurn(gp);});
 };
 window.startAttack=function(u){S.attackPick=u;render();};
 window.cancelAttackPick=function(){S.attackPick=null;render();};
@@ -662,7 +719,7 @@ window.confirmAttack=async function(defUid){
     if(!diffinCanAttack(gp,atkUid))return alert('Diffin can only attack if you have a Fighter with 5+ Health on your team.');
     if(!declareAttack(gp,atkUid,defUid,pid))return alert('Not enough coins to attack.');
     gp.p[pid].hasActed=true;
-    if(!gp.pending)nextTurn(gp);});
+    if(!gp.pending&&!gp.responseWindow)nextTurn(gp);});
 };
 window.useAbility=async function(u,idx){
   await act(r=>{const gp=r.game;const pid=S.myId;
@@ -1380,6 +1437,71 @@ function renderMulligan(){
   </div>`;
 }
 
+function renderResponseWindow(){
+  const gp=S.room.game;const rw=gp.responseWindow;if(!rw)return'';
+  const ai=gp.inst[rw.attackerUid];const di=gp.inst[rw.defenderUid];
+  if(!ai||!di)return'';
+  const ac=CARDS[ai.cid];const dc=CARDS[di.cid];
+  const aPlayer=gp.p[ai.owner]&&gp.p[ai.owner].name||'?';
+  const dPlayer=gp.p[di.owner]&&gp.p[di.owner].name||'?';
+  const projDmg=combatDamage(gp,rw.attackerUid,rw.defenderUid);
+  const isMyPriority=rw.priority===S.myId;
+  const isMeInvolved=ai.owner===S.myId||di.owner===S.myId;
+  const me=gp.p[S.myId];
+  const myCoins=me?me.coins:0;
+  const myHand=me?me.hand:[];
+  const responses=myHand.filter(u=>{const c=CARDS[gp.inst[u].cid];return c&&c.type==='response'&&(c.cost||0)<=myCoins;});
+  const priorityName=gp.p[rw.priority]&&gp.p[rw.priority].name||'?';
+  return`<div class="overlay resp-overlay">
+    <div class="resp-modal${isMeInvolved?' me-involved':''}">
+      <div class="resp-header"><span class="resp-header-ico">&#9876;</span>ATTACK DECLARED</div>
+      <div class="resp-vs">
+        <div class="resp-side resp-attacker">
+          <div class="resp-side-card">${artImg(ai.cid,'resp-side-img')}</div>
+          <div class="resp-side-meta">
+            <div class="resp-side-name">${ac.name}</div>
+            <div class="resp-side-owner">${aPlayer}</div>
+            <div class="resp-side-stats"><span class="resp-atk">&#9876; ${projDmg}</span></div>
+          </div>
+        </div>
+        <div class="resp-arrow">
+          <span class="resp-arrow-line"></span>
+          <span class="resp-dmg-tag">-${projDmg} DMG</span>
+        </div>
+        <div class="resp-side resp-defender">
+          <div class="resp-side-card">${artImg(di.cid,'resp-side-img')}</div>
+          <div class="resp-side-meta">
+            <div class="resp-side-name">${dc.name}</div>
+            <div class="resp-side-owner">${dPlayer}</div>
+            <div class="resp-side-stats"><span class="resp-hp">&#10084; ${di.hp}/${di.maxHp}</span></div>
+          </div>
+        </div>
+      </div>
+      ${isMyPriority?`
+        <div class="resp-prompt">It's your turn to respond. Play a Response card from your hand or allow the attack.</div>
+        ${responses.length?`
+          <div class="resp-cards-label">YOUR PLAYABLE RESPONSES</div>
+          <div class="resp-cards">${responses.map(u=>{const c=CARDS[gp.inst[u].cid];return `<div class="resp-card" onclick="playHandCard('${u}')">
+            ${artImg(gp.inst[u].cid,'resp-card-img')}
+            <div class="resp-card-foot">
+              <div class="resp-card-name">${c.name}</div>
+              <div class="resp-card-cost">${c.cost||0}&#9711;</div>
+            </div>
+          </div>`;}).join('')}</div>
+        `:`<div class="resp-no-cards">You have no playable Response cards.</div>`}
+        <div class="resp-buttons">
+          <button class="btn lg" onclick="passResponse()">ALLOW ATTACK</button>
+        </div>
+      `:`
+        <div class="resp-waiting">
+          <div class="resp-waiting-pulse"></div>
+          Waiting for <b>${priorityName}</b> to respond&hellip;
+        </div>
+      `}
+    </div>
+  </div>`;
+}
+
 function renderWinner(gp){
   return`<div id="game-table"><div class="winner-screen">
     <h1>${gp.winner==='draw'?'DRAW!':(gp.p[gp.winner]?gp.p[gp.winner].name:'???')+' WINS!'}</h1>
@@ -1410,6 +1532,7 @@ function render(){
   if(S.zoomCid)h+=renderZoom();
   if(S.presetDetail)h+=renderPresetDetail();
   if(S.mullOpen)h+=renderMulligan();
+  if(S.room&&S.room.game&&S.room.game.responseWindow)h+=renderResponseWindow();
   app.innerHTML=h;
 }
 
