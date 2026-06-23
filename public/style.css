@@ -219,39 +219,91 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
 .hp-fill.full { background: linear-gradient(90deg, #5a9c20, var(--su)); }
 .hp-num { font-size: 13px; font-family: 'Bebas Neue', cursive; color: var(--su); min-width: 48px; text-align: right; }
 
-/* Deck / Discard / Hand piles - card-back graphic with count */
-.ps-piles { display: flex; gap: 6px; flex-shrink: 0; }
+.ps-piles { display: flex; gap: 8px; flex-shrink: 0; align-items: center; }
 .pile {
-  position: relative; width: 36px; height: 50px;
-  background: linear-gradient(135deg, #2a1a08 0%, #1a0d04 50%, #2a1a08 100%);
-  border: 2px solid rgba(255,109,35,0.35); border-radius: 4px;
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.06);
+  position: relative; width: 42px; height: 60px;
+  border-radius: 5px;
   cursor: default;
+  flex-shrink: 0;
   transition: transform 0.15s, box-shadow 0.15s;
 }
-.pile:hover { transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0,0,0,0.7); }
-.pile::before {
-  content: ''; position: absolute; inset: 3px; border-radius: 2px;
-  background: radial-gradient(circle at center, rgba(255,109,35,0.18) 0%, transparent 70%);
+.pile.clickable { cursor: pointer; }
+.pile.clickable:hover { transform: translateY(-3px); }
+.pile-stack {
+  position: absolute; inset: 0; border-radius: 5px;
+  background:
+    linear-gradient(135deg, rgba(255,109,35,0.2), transparent 40%),
+    linear-gradient(45deg, rgba(0,0,0,0.5), transparent 40%),
+    repeating-linear-gradient(45deg, #1a1208 0 4px, #2a1d0c 4px 8px);
+  border: 1.5px solid #4a3015;
+  box-shadow:
+    0 2px 4px rgba(0,0,0,0.7),
+    inset 0 1px 0 rgba(255,220,140,0.18),
+    inset 0 -3px 6px rgba(0,0,0,0.4);
 }
-.pile-n {
-  font-family: 'Black Ops One', cursive; font-size: 14px; color: var(--cr);
-  text-shadow: 0 1px 2px #000; position: relative; z-index: 1;
+.pile-stack::before {
+  content: 'CA'; position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Black Ops One', cursive; font-size: 18px;
+  color: rgba(255,180,40,0.4);
+  text-shadow: 0 1px 2px rgba(0,0,0,0.8);
 }
-.pile-l {
-  font-family: 'Bebas Neue', cursive; font-size: 7px; color: var(--dim);
-  letter-spacing: 0.15em; position: relative; z-index: 1; margin-top: -1px;
+.pile-stack::after {
+  content: ''; position: absolute;
+  top: -3px; left: 3px; right: -3px; bottom: 3px;
+  border-radius: 5px;
+  background:
+    linear-gradient(135deg, rgba(255,109,35,0.15), transparent 40%),
+    repeating-linear-gradient(45deg, #1a1208 0 4px, #2a1d0c 4px 8px);
+  border: 1.5px solid #4a3015;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.6);
+  z-index: -1;
 }
-.deck-pile { border-color: rgba(255,109,35,0.4); }
-.grave-pile { border-color: rgba(110,110,110,0.4); background: linear-gradient(135deg, #1a1a1a 0%, #0a0a0a 50%, #1a1a1a 100%); }
-.grave-pile::before { background: radial-gradient(circle at center, rgba(110,110,110,0.15) 0%, transparent 70%); }
-.hand-pile { border-color: rgba(0,255,204,0.35); background: linear-gradient(135deg, #052a25 0%, #021816 50%, #052a25 100%); }
-.hand-pile::before { background: radial-gradient(circle at center, rgba(0,255,204,0.15) 0%, transparent 70%); }
+.pile-empty .pile-stack {
+  background: rgba(0,0,0,0.5);
+  border: 1.5px dashed rgba(255,255,255,0.1);
+  box-shadow: none;
+}
+.pile-empty .pile-stack::before, .pile-empty .pile-stack::after { display: none; }
 
-/* Revealed top-of-deck (Hot Mike) */
+.pile-count {
+  position: absolute; top: -6px; right: -6px; z-index: 2;
+  min-width: 22px; height: 22px; padding: 0 5px;
+  background: rgba(0,0,0,0.9); color: #fff;
+  border: 1.5px solid var(--ap); border-radius: 11px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Black Ops One', cursive; font-size: 11px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.6);
+}
+.pile-label {
+  position: absolute; left: 0; right: 0; bottom: -16px;
+  font-family: 'Bebas Neue', cursive; font-size: 9px;
+  color: var(--dim); letter-spacing: 0.15em;
+  text-align: center; white-space: nowrap;
+}
+
+.deck-pile { /* deck pile uses default .pile-stack styling (card-back) */ }
+
+.grave-pile .pile-stack {
+  background:
+    linear-gradient(135deg, rgba(150,30,30,0.18), transparent 40%),
+    repeating-linear-gradient(45deg, #1a0808 0 4px, #2a0e0c 4px 8px);
+  border-color: #5a2010;
+}
+.grave-pile .pile-stack::before { color: rgba(220,100,60,0.4); content: '\2620'; font-size: 16px; }
+.grave-pile .pile-count { border-color: #cc4422; }
+
+.hand-pile .pile-stack { display: none; }
+.hand-pile {
+  background: rgba(0,40,30,0.6);
+  border: 1.5px solid rgba(0,255,204,0.3);
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Black Ops One', cursive; font-size: 13px; color: var(--cr);
+}
+.hand-pile .pile-count { border-color: var(--cr); }
+
 .pile-revealed {
-  position: relative; width: 36px; height: 50px;
+  position: relative; width: 42px; height: 60px;
   border: 2px solid var(--ap); border-radius: 4px; overflow: hidden;
   cursor: pointer; flex-shrink: 0;
   box-shadow: 0 0 12px rgba(240,180,41,0.5);
@@ -259,7 +311,7 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
 }
 @keyframes pile-rev-pulse { 0%,100% { box-shadow: 0 0 10px rgba(240,180,41,0.4);} 50% { box-shadow: 0 0 18px rgba(240,180,41,0.8);} }
 .pile-revealed-img, .pile-revealed-img-fb {
-  width: 36px; height: 50px; object-fit: cover; display: block;
+  width: 100%; height: 100%; object-fit: cover; display: block;
 }
 .pile-revealed-lbl {
   position: absolute; bottom: 0; left: 0; right: 0;
@@ -572,6 +624,17 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
 .gm-dice-row { display: flex; gap: 6px; flex-wrap: wrap; }
 .gm-dice-row .gm-mini { flex: 1; min-width: 50px; }
 
+.bcard.is-token { border-style: dashed; }
+.bcard-token-ribbon {
+  position: absolute; top: 4px; right: 4px; z-index: 5;
+  background: rgba(0,0,0,0.85); color: var(--ap);
+  font-family: 'Bebas Neue', cursive; font-size: 8px;
+  padding: 2px 6px; border-radius: 2px;
+  border: 1px solid var(--ap); letter-spacing: 0.18em;
+  text-shadow: 0 1px 1px rgba(0,0,0,0.8);
+  pointer-events: none;
+}
+
 .bcard, .hcard {
   width: 120px; height: 168px;
   background: var(--bg-card); border-radius: 8px;
@@ -603,7 +666,6 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
-/* MTGA-style corner stat badges — ATK bottom-left, HP bottom-right */
 .bcard-pt-atk, .bcard-pt-hp {
   position: absolute; bottom: -8px; z-index: 6;
   min-width: 30px; height: 30px; padding: 0 7px;
@@ -621,7 +683,6 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
 .bcard-pt-max { font-size: 10px; opacity: 0.8; margin-left: 1px; }
 @keyframes hp-pulse-low { 0%,100% { box-shadow: 0 3px 10px rgba(204,17,0,0.6); } 50% { box-shadow: 0 3px 18px rgba(255,40,20,1); } }
 
-/* Status / counter badges row across the TOP of the card */
 .bcard-badges {
   position: absolute; top: 4px; left: 4px; right: 4px; z-index: 5;
   display: flex; flex-wrap: wrap; gap: 2px;
@@ -644,7 +705,6 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
 .bdg.det { background: rgba(204,153,17,0.9); color: #000; border-color: #ffe080; }
 .bdg.tmp { background: rgba(255,109,35,0.9); color: #000; border-color: #ffb088; }
 
-/* Weapons docked under the wielder card */
 .bcard-weapons {
   position: absolute; left: 50%; transform: translateX(-50%);
   bottom: -38px; z-index: 4;
@@ -676,7 +736,6 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
   box-shadow: 0 2px 4px rgba(0,0,0,0.7);
 }
 
-/* Hand card overlay (frosted bottom info — unchanged from before) */
 .hcard-body {
   position: relative; z-index: 3;
   background: linear-gradient(0deg, rgba(0,0,0,0.96) 0%, rgba(0,0,0,0.78) 65%, transparent 100%);
@@ -691,7 +750,6 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
 }
 .hcard-meta { font-size: 8px; color: var(--dim); letter-spacing: 0.05em; }
 
-/* Top-corner badges on hand cards */
 .hcard-cost {
   position: absolute; top: 6px; right: 6px; z-index: 4;
   width: 28px; height: 28px; border-radius: 50%;
@@ -715,15 +773,12 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
 .zone-wrap { display: flex; flex-direction: column; gap: 14px; align-items: center; flex-shrink: 0; padding-bottom: 14px; }
 
 .bcard-acts {
-  position: absolute; left: -2px; right: -2px; top: -36px; z-index: 7;
+  position: absolute; left: -2px; right: -2px; bottom: -32px; z-index: 7;
   background: rgba(0,0,0,0.92); padding: 4px;
   display: flex; gap: 3px; flex-wrap: wrap;
   border: 1px solid var(--border-mid); border-radius: 6px;
-  box-shadow: 0 -4px 10px rgba(0,0,0,0.6);
-  opacity: 0; pointer-events: none;
-  transition: opacity 0.15s;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.6);
 }
-.bcard:hover .bcard-acts { opacity: 1; pointer-events: auto; }
 .bcard-btn {
   font-size: 9px; padding: 3px 5px; border: 1px solid var(--border-mid);
   color: #fff; background: rgba(255,255,255,0.06); border-radius: 2px;
@@ -735,6 +790,12 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
 .bcard-btn.atk-btn:hover { background: var(--red); color: #fff; border-color: var(--red); }
 .bcard-btn.ab-btn { font-size: 8.5px; color: var(--ap); border-color: rgba(240,180,41,0.35); background: rgba(240,180,41,0.06); }
 .bcard-btn.ab-btn:hover { background: var(--ap); color: #000; }
+.bcard-btn.disabled, .bcard-btn[disabled] {
+  opacity: 0.35; cursor: not-allowed;
+  background: rgba(60,60,60,0.4) !important;
+  color: #888 !important;
+  border-color: rgba(255,255,255,0.08) !important;
+}
 
 /* Hand cards */
 .hand-strip .hcard:not(.unplayable):hover {
@@ -770,16 +831,7 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
   letter-spacing: 0.1em;
 }
 
-/* Opponent cards: flipped, but readable when hovered */
-.opp-field .bcard { transform: rotate(180deg); }
-.opp-field .bcard:hover {
-  transform: rotate(0deg) translateY(-6px) scale(1.06);
-  z-index: 60;
-}
-.opp-field .bcard.is-tapped { transform: rotate(186deg); }
-.opp-field .bcard.is-tapped:hover { transform: rotate(0deg) scale(1.06); }
-.opp-field .bcard.is-target { transform: rotate(180deg); }
-.opp-field .bcard.is-target:hover { transform: rotate(0deg) scale(1.06); }
+.opp-field .bcard.is-tapped { transform: rotate(6deg); }
 
 .action-bar {
   background: linear-gradient(90deg, rgba(240,180,41,0.12) 0%, rgba(240,180,41,0.06) 100%);
@@ -852,39 +904,39 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
 }
 .zoom-close:hover { background: var(--or); color: #000; transform: scale(1.08); }
 
-/* Game log floating button + panel */
 .log-fab {
-  position: absolute; bottom: 200px; left: 14px; z-index: 18;
-  width: 44px; height: 44px; border-radius: 50%;
+  position: fixed; top: 56px; right: 14px; z-index: 18;
+  width: 38px; height: 38px; border-radius: 6px;
   background: rgba(0,0,0,0.82); border: 1px solid var(--border-mid);
-  color: var(--or); font-size: 18px; cursor: pointer;
+  color: var(--or); font-size: 16px; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
   backdrop-filter: blur(6px); box-shadow: 0 4px 14px rgba(0,0,0,0.5);
 }
 .log-fab:hover { background: rgba(255,109,35,0.18); border-color: var(--or); }
 
-/* Dice button always visible */
 .dice-fab-group {
-  position: absolute; bottom: 244px; left: 14px; z-index: 18;
-  display: flex; flex-direction: column; gap: 6px;
+  position: fixed; top: 100px; right: 14px; z-index: 18;
+  display: flex; flex-direction: column; gap: 4px;
+}
 }
 .dice-fab {
   background: linear-gradient(145deg, rgba(240,180,41,0.18), rgba(240,180,41,0.06));
   border: 1px solid var(--ap); color: var(--ap);
-  font-family: 'Bebas Neue', cursive; font-size: 13px; letter-spacing: 0.12em;
-  padding: 8px 12px; border-radius: 6px; cursor: pointer;
-  backdrop-filter: blur(6px); box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+  font-family: 'Bebas Neue', cursive; font-size: 11px; letter-spacing: 0.1em;
+  padding: 5px 8px; border-radius: 4px; cursor: pointer;
+  backdrop-filter: blur(6px); box-shadow: 0 2px 6px rgba(0,0,0,0.5);
   transition: background 0.15s, transform 0.1s;
-  min-width: 60px;
+  min-width: 46px; min-height: 26px;
 }
 .dice-fab:hover { background: rgba(240,180,41,0.32); transform: translateY(-2px); }
 .dice-fab:active { transform: translateY(0); }
-.dice-fab.small { font-size: 11px; padding: 5px 10px; opacity: 0.8; }
+.dice-fab.small { font-size: 10px; padding: 4px 7px; opacity: 0.85; }
 .dice-fab.small:hover { opacity: 1; }
 
 @media (max-width: 760px) {
-  .dice-fab-group { bottom: 200px; left: 8px; }
-  .dice-fab { font-size: 11px; padding: 6px 8px; }
+  .dice-fab-group { top: 96px; right: 8px; gap: 3px; }
+  .dice-fab { font-size: 10px; padding: 4px 6px; min-width: 40px; }
+  .log-fab { top: 54px; right: 8px; width: 32px; height: 32px; font-size: 14px; }
 }
 
 .log-panel {
