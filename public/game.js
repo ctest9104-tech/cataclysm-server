@@ -700,6 +700,10 @@ window.toggleHelp=function(){S.helpOpen=!S.helpOpen;render();};
 window.toggleLog=function(){S.logOpen=!S.logOpen;render();};
 window.toggleGm=function(){S.gmMode=!S.gmMode;S.gmEditUid=null;render();};
 window.viewPile=function(pid,zone){
+  if(zone==='deck'&&!S.gmMode){
+    alert('Decks are hidden. Only a card ability that lets you search your deck can reveal it (or enable GM Mode).');
+    return;
+  }
   S.pileView={pid,zone,filter:''};render();
 };
 window.closePileView=function(){S.pileView=null;render();};
@@ -825,11 +829,26 @@ function bCard(gp,uid,opts){
   const atkBoosted=(counterAtk+tempAtk+weaponBonus)>0;
   const atkClass=atkBoosted?'b-atk boosted':'b-atk';
 
+  const isToken=(c.kind==='token'||c.type==='token');
+  if(isToken)cls+=' is-token';
+
   let actBtns='';
   if(!isOpp&&myTurn&&!pend&&!S.attackPick){
-    if(!s.tapped)actBtns+=`<button class="bcard-btn atk-btn" onclick="startAttack('${uid}')">&#9876; ATK</button>`;
-    (c.activated||[]).forEach((ab,idx)=>{actBtns+=`<button class="bcard-btn ab-btn" onclick="useAbility('${uid}',${idx})" title="${ab.label}">${ab.label.slice(0,16)}</button>`;});
-    wielded.forEach(wu=>{const wc=CARDS[gp.inst[wu].cid];([...(wc.weaponActivated||[]),(wc.grantsActivated||[])]).flat().forEach((ab,ai)=>{actBtns+=`<button class="bcard-btn ab-btn" onclick="useAbility('${uid}','w${wu}${ai}')" title="${ab.label}">${ab.label.slice(0,16)}</button>`;});});
+    if(!s.tapped&&canAct(gp,uid))actBtns+=`<button class="bcard-btn atk-btn" onclick="startAttack('${uid}')">&#9876; ATK ${effectiveAtkCost(gp,uid)}&#9711;</button>`;
+    (c.activated||[]).forEach((ab,idx)=>{
+      const myCoins=gp.p[S.myId].coins;
+      const needCoins=(ab.cost&&ab.cost.coins)||0;
+      const needsTap=!!(ab.cost&&ab.cost.tap);
+      const disabled=(needCoins>myCoins)||(needsTap&&!canAct(gp,uid))||i.stunned;
+      actBtns+=`<button class="bcard-btn ab-btn${disabled?' disabled':''}" ${disabled?'disabled':`onclick="useAbility('${uid}',${idx})"`} title="${ab.label}${disabled?' (cannot use)':''}">${ab.label.slice(0,18)}</button>`;
+    });
+    wielded.forEach(wu=>{const wc=CARDS[gp.inst[wu].cid];([...(wc.weaponActivated||[]),(wc.grantsActivated||[])]).flat().forEach((ab,ai)=>{
+      const myCoins=gp.p[S.myId].coins;
+      const needCoins=(ab.cost&&ab.cost.coins)||0;
+      const needsTap=!!(ab.cost&&ab.cost.tap);
+      const disabled=(needCoins>myCoins)||(needsTap&&!canAct(gp,uid))||i.stunned;
+      actBtns+=`<button class="bcard-btn ab-btn${disabled?' disabled':''}" ${disabled?'disabled':`onclick="useAbility('${uid}','w${wu}${ai}')"`} title="${ab.label}${disabled?' (cannot use)':''}">${ab.label.slice(0,18)}</button>`;
+    });});
   }
 
   /* MTGA-style corner stats: ATK bottom-left, HP bottom-right, both colored when boosted */
@@ -837,11 +856,9 @@ function bCard(gp,uid,opts){
     `<div class="bcard-pt-atk ${atkClass}" title="Attack${atkBoosted?' (base '+baseAtk+(counterAtk?' +'+counterAtk+' counters':'')+(weaponBonus?' +'+weaponBonus+' weapon':'')+(tempAtk?' +'+tempAtk+' temp':'')+')':''}">${s.atk}</div>
      <div class="bcard-pt-hp ${hpClass}" title="${s.hp}/${i.maxHp} HP${buffedHp?' (boosted from '+printedHp+')':''}">${s.hp}<span class="bcard-pt-max">/${i.maxHp}</span></div>`:'';
 
-  /* Weapons docked under the wielder card */
   const weaponHtml=wielded.length?
     `<div class="bcard-weapons">${wielded.map(wu=>{const wc=CARDS[gp.inst[wu].cid]||{};return `<div class="bcard-weapon-chip" title="${wc.name||''}${wc.atkMod?' (+'+wc.atkMod+' atk)':''}" onclick="event.stopPropagation();showZoom('${gp.inst[wu].cid}')">${artImg(gp.inst[wu].cid,'bcard-weapon-img')}${wc.atkMod?`<span class="bcard-weapon-bonus">+${wc.atkMod}</span>`:''}</div>`;}).join('')}</div>`:'';
 
-  /* Counters + status badges row across the top of the card */
   const badges=[];
   if(counterAtk>0)badges.push(`<span class="bdg ctr" title="+${counterAtk} attack counter${counterAtk>1?'s':''}">+${counterAtk}&#9876;</span>`);
   if(buffedHp)badges.push(`<span class="bdg buff" title="Fortified (+${i.maxHp-printedHp} HP)">+${i.maxHp-printedHp}&#10084;</span>`);
@@ -860,6 +877,7 @@ function bCard(gp,uid,opts){
     ${artImg(i.cid,'bcard-art')}
     ${badgesHtml}
     ${ptHtml}
+    ${isToken?'<div class="bcard-token-ribbon">TOKEN</div>':''}
     ${S.gmMode?`<button class="bcard-gm" onclick="event.stopPropagation();gmEdit('${uid}')" title="GM edit">&#9881;</button>`:''}
     <div class="bcard-namestrip" style="background:linear-gradient(0deg,${fCol}dd,${fCol}77 60%,transparent)">
       <span class="bcard-name">${s.name}</span>
@@ -915,10 +933,26 @@ function playerStrip(gp,pid,isOpp){
       <div class="hp-num">${b?b.hp:'?'}/${b?b.maxHp:'?'}</div>
     </div>
     <div class="ps-piles">
-      <div class="pile deck-pile" title="Click to view deck (${p.deck.length} cards)" onclick="viewPile('${pid}','deck')"><span class="pile-n">${p.deck.length}</span><span class="pile-l">DECK</span></div>
-      ${p.topRevealed&&p.deck.length?`<div class="pile-revealed" title="Top of deck revealed (Hot Mike)" onclick="showZoom('${gp.inst[p.deck[0]].cid}')">${artImg(gp.inst[p.deck[0]].cid,'pile-revealed-img')}<span class="pile-revealed-lbl">TOP</span></div>`:''}
-      <div class="pile grave-pile" title="Click to view discard (${p.grave.length} cards)" onclick="viewPile('${pid}','grave')"><span class="pile-n">${p.grave.length}</span><span class="pile-l">DSCRD</span></div>
-      ${!isOpp?`<div class="pile hand-pile" title="Hand"><span class="pile-n">${p.hand.length}</span><span class="pile-l">HAND</span></div>`:`<div class="pile hand-pile" title="Opp. Hand"><span class="pile-n">${p.hand.length}</span><span class="pile-l">HAND</span></div>`}
+      <div class="pile deck-pile${p.deck.length?'':' pile-empty'}${S.gmMode?' clickable':''}"
+           title="${p.deck.length} card${p.deck.length===1?'':'s'} in deck — hidden (GM mode required to view)"
+           ${S.gmMode?`onclick="viewPile('${pid}','deck')"`:''}>
+        <div class="pile-stack"></div>
+        ${p.deck.length?`<div class="pile-count">${p.deck.length}</div>`:''}
+        <div class="pile-label">DECK</div>
+      </div>
+      ${p.topRevealed&&p.deck.length?`<div class="pile-revealed" title="Top of deck revealed" onclick="showZoom('${gp.inst[p.deck[0]].cid}')">${artImg(gp.inst[p.deck[0]].cid,'pile-revealed-img')}<span class="pile-revealed-lbl">TOP</span></div>`:''}
+      <div class="pile grave-pile${p.grave.length?' clickable':' pile-empty'}"
+           title="${p.grave.length} card${p.grave.length===1?'':'s'} in discard — click to view"
+           ${p.grave.length?`onclick="viewPile('${pid}','grave')"`:''}>
+        <div class="pile-stack"></div>
+        ${p.grave.length?`<div class="pile-count">${p.grave.length}</div>`:''}
+        <div class="pile-label">DSCRD</div>
+      </div>
+      <div class="pile hand-pile" title="${isOpp?'Opponent':'Your'} hand: ${p.hand.length} card${p.hand.length===1?'':'s'}">
+        ${p.hand.length}
+        <div class="pile-count">${p.hand.length}</div>
+        <div class="pile-label">HAND</div>
+      </div>
     </div>
     ${!isOpp?`<div class="ps-coins"><span class="coin-badge">${p.coins} &#9711;</span></div>`:`<div class="ps-coins"><span class="coin-badge opp">${p.coins} &#9711;</span></div>`}
     ${!isOpp?`<div class="ps-controls">
