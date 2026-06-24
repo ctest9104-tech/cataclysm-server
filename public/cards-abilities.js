@@ -583,8 +583,11 @@ Object.assign(window.CATA_ABILITIES, {
 
   // Sky, Unlikely Champion — When attacked, gains Agility this level. Atk cost -1 per Survivor.
   'render-mq83m92b': {
-    /* "When attacked" hook needs engine support; partial automation via on-damaged */
-    _info:'When attacked → Agility this level (use GM panel: gain Agility on hit).'
+    onAttacked(gp,ctx){
+      const i=gp.inst[ctx.src];if(!i)return;
+      i.agilityLevel=true;
+      log(gp,'Sky gains Agility this level (attacked).');
+    }
   },
 
   // Tantrum, World Ender — can't be attacked if Whump! exists. ③⊙ + 1 self-dmg: create Whump!.
@@ -698,7 +701,13 @@ Object.assign(window.CATA_ABILITIES, {
 
   // Whiskers of the Ancient — Wielder attacks → becomes faction of your choice this level; +1 atk per faction on team.
   'render-mq83v8ob': {
-    _info:'Wielder becomes any faction on attack (manual via GM faction tag).'
+    onWielderAttack(gp,uid,defUid){
+      const wielder=gp.inst[uid];if(!wielder)return;
+      const factions=['synth','mystic','shifter','survivor','apex'];
+      pendPick(gp,{forId:wielder.owner,prompt:'Whiskers: wielder becomes which faction this attack?',
+        options:factions.map(f=>({label:f.charAt(0).toUpperCase()+f.slice(1),value:f}))},
+        (g,fac)=>{const w=g.inst[uid];if(w){w.tempFaction=fac;log(g,CARDS[w.cid].name+' becomes '+fac+' this attack.');}});
+    }
   },
 
   // Ada, Relict Fighter — +1 atk per enhanced B/F on your team. Response ②: Fortify.
@@ -1494,3 +1503,60 @@ Object.assign(window.CATA_ABILITIES, {
   'render-mq82up5x': {},
 
 });
+
+/* Block redirect — for cards with "Response ⊙: Block" in their text. When played
+   during an attack response window, swap the defender to this card. */
+function makeBlockAbility(coinCost){
+  return {
+    label: coinCost ? ('Response '+'\u2460\u2461\u2462\u2463'[coinCost-1]+'\u2299: Block') : 'Response \u2299: Block',
+    cost: coinCost ? {tap:true, coins:coinCost} : {tap:true},
+    run(gp, ctx){
+      if(!gp.pendingAttack){log(gp,'Block: no attack to redirect.');return;}
+      const blocker = ctx.src;
+      const oldDef = gp.pendingAttack.defender;
+      if(oldDef===blocker){log(gp,'Block: already the defender.');return;}
+      gp.pendingAttack.defender = blocker;
+      log(gp,(CARDS[gp.inst[blocker].cid]||{name:'?'}).name + ' Blocks the attack from ' + ((CARDS[gp.inst[oldDef]?.cid]||{name:'?'}).name) + '!');
+    }
+  };
+}
+
+const BLOCK_FREE = ['render-mq831kn8','render-mq83t4ah','render-mq83gsx7'];
+const BLOCK_ONE  = ['render-mq838tf0','render-mq83wcyl'];
+BLOCK_FREE.forEach(cid=>{const e=window.CATA_ABILITIES[cid]||(window.CATA_ABILITIES[cid]={});e.activated=(e.activated||[]).concat([makeBlockAbility(0)]);});
+BLOCK_ONE.forEach(cid=>{const e=window.CATA_ABILITIES[cid]||(window.CATA_ABILITIES[cid]={});e.activated=(e.activated||[]).concat([makeBlockAbility(1)]);});
+
+/* Weapon-granted Block (the wielder gets Response ⊙: Block) */
+['render-mq836yg3','render-mq83osng'].forEach(cid=>{
+  const e=window.CATA_ABILITIES[cid]||(window.CATA_ABILITIES[cid]={});
+  e.grantsActivated=(e.grantsActivated||[]).concat([makeBlockAbility(0)]);
+});
+
+/* Pia's Response ②⊙: Fortify — defender chooses an ally Synth to host, gains Pia's HP. */
+(function wirePiaResponse(){
+  const e=window.CATA_ABILITIES['render-mq83dkku']||(window.CATA_ABILITIES['render-mq83dkku']={});
+  e.activated=(e.activated||[]).concat([{
+    label:'Response \u2461\u2299: Fortify',
+    cost:{tap:true,coins:2},
+    run(gp,ctx){
+      const me=gp.inst[ctx.src];if(!me)return;
+      const hosts=gp.p[ctx.pid].board.concat([gp.p[ctx.pid].boss]).filter(au=>{
+        if(!au||au===ctx.src)return false;
+        const ai=gp.inst[au];if(!ai)return false;
+        const ac=CARDS[ai.cid];
+        return ac&&ac.faction==='synth'&&(ac.type==='fighter'||ac.type==='boss');
+      });
+      if(!hosts.length){log(gp,'Pia: no Synth ally to Fortify under.');return;}
+      pendPick(gp,{forId:ctx.pid,prompt:'Pia: Fortify under which Synth?',
+        options:hosts.map(au=>({label:CARDS[gp.inst[au].cid].name,value:au}))},
+        (g,host)=>{
+          if(!host)return;
+          const hostI=g.inst[host];const addHp=me.maxHp||0;
+          hostI.maxHp+=addHp;hostI.hp+=addHp;
+          g.p[ctx.pid].board=g.p[ctx.pid].board.filter(x=>x!==ctx.src);
+          me.fortifiedUnder=host;
+          log(g,CARDS[me.cid].name+' Fortifies under '+CARDS[hostI.cid].name+' (+'+addHp+' HP).');
+        });
+    }
+  }]);
+})();
