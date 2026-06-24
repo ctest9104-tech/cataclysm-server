@@ -626,13 +626,16 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
 
 .bcard.is-token { border-style: dashed; }
 .bcard-token-ribbon {
-  position: absolute; top: 4px; right: 4px; z-index: 5;
-  background: rgba(0,0,0,0.85); color: var(--ap);
+  position: absolute; top: 50%; right: -10px;
+  transform: translateY(-50%) rotate(90deg); transform-origin: center;
+  z-index: 5;
+  background: rgba(0,0,0,0.92); color: var(--ap);
   font-family: 'Bebas Neue', cursive; font-size: 8px;
-  padding: 2px 6px; border-radius: 2px;
-  border: 1px solid var(--ap); letter-spacing: 0.18em;
+  padding: 2px 8px; border-radius: 2px;
+  border: 1px solid var(--ap); letter-spacing: 0.22em;
   text-shadow: 0 1px 1px rgba(0,0,0,0.8);
   pointer-events: none;
+  white-space: nowrap;
 }
 
 .resp-overlay { z-index: 950; backdrop-filter: blur(3px); }
@@ -799,16 +802,17 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
 
 /* Name strip across bottom of card with faction-color gradient */
 .bcard-namestrip {
-  position: absolute; left: 0; right: 0; bottom: 0;
-  padding: 14px 8px 6px;
+  position: absolute; left: 30px; right: 30px; bottom: 0;
+  padding: 16px 4px 4px;
   z-index: 3; pointer-events: none;
-  border-bottom-left-radius: 6px; border-bottom-right-radius: 6px;
+  text-align: center;
 }
 .bcard-name {
-  font-family: 'Black Ops One', cursive; font-size: 10px; color: #fff;
-  text-shadow: 1px 1px 2px #000, 0 0 4px rgba(0,0,0,0.9);
+  font-family: 'Black Ops One', cursive; font-size: 9px; color: #fff;
+  text-shadow: 1px 1px 2px #000, 0 0 4px rgba(0,0,0,0.95);
   display: block; line-height: 1.1;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  letter-spacing: 0.02em;
 }
 
 .bcard-pt-atk, .bcard-pt-hp {
@@ -851,9 +855,9 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
 .bdg.tmp { background: rgba(255,109,35,0.9); color: #000; border-color: #ffb088; }
 
 .bcard-weapons {
-  position: absolute; left: 50%; transform: translateX(-50%);
-  bottom: -38px; z-index: 4;
   display: flex; gap: 4px;
+  margin-top: 18px;
+  justify-content: center;
 }
 .bcard-weapon-chip {
   width: 34px; height: 48px;
@@ -915,20 +919,27 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
   font-size: 11px; padding: 2px 7px; border-radius: 3px;
 }
 
-.zone-wrap { display: flex; flex-direction: column; gap: 14px; align-items: center; flex-shrink: 0; padding-bottom: 14px; }
+.zone-wrap {
+  display: flex; flex-direction: column;
+  gap: 6px; align-items: center; flex-shrink: 0;
+  padding-bottom: 14px;
+}
 
 .bcard-acts {
-  position: absolute; left: -2px; right: -2px; bottom: -32px; z-index: 7;
-  background: rgba(0,0,0,0.92); padding: 4px;
+  margin-top: 16px;
+  width: 124px;
+  background: rgba(0,0,0,0.92); padding: 3px;
   display: flex; gap: 3px; flex-wrap: wrap;
-  border: 1px solid var(--border-mid); border-radius: 6px;
+  border: 1px solid var(--border-mid); border-radius: 4px;
   box-shadow: 0 4px 10px rgba(0,0,0,0.6);
 }
+.bcard-weapons + .bcard-acts { margin-top: 4px; }
 .bcard-btn {
-  font-size: 9px; padding: 3px 5px; border: 1px solid var(--border-mid);
+  font-size: 9px; padding: 4px 5px; border: 1px solid var(--border-mid);
   color: #fff; background: rgba(255,255,255,0.06); border-radius: 2px;
   font-family: 'Share Tech Mono', monospace;
   transition: all 0.15s; text-align: center; cursor: pointer; flex: 1; min-width: 38px;
+  min-height: 22px;
 }
 .bcard-btn:hover { background: rgba(255,255,255,0.18); border-color: rgba(255,255,255,0.4); }
 .bcard-btn.atk-btn { border-color: rgba(204,17,0,0.45); color: #ff8a78; background: rgba(204,17,0,0.1); }
