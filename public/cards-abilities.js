@@ -1560,3 +1560,137 @@ BLOCK_ONE.forEach(cid=>{const e=window.CATA_ABILITIES[cid]||(window.CATA_ABILITI
     }
   }]);
 })();
+
+/* ──────── Comprehensive ability completions (audit pass) ──────── */
+
+/* Extra Block cards: Intersentinel, Bobby Brushbacks, Clatter, Diffin (1⊙ Block), Lyra (free Block) */
+['DS1-030','render-mq82ozdt','render-mq82rspr','render-mq82up5x'].forEach(cid=>{
+  const e=window.CATA_ABILITIES[cid]||(window.CATA_ABILITIES[cid]={});
+  e.activated=(e.activated||[]).concat([makeBlockAbility(1)]);
+});
+['render-mq836emw'].forEach(cid=>{
+  const e=window.CATA_ABILITIES[cid]||(window.CATA_ABILITIES[cid]={});
+  e.activated=(e.activated||[]).concat([makeBlockAbility(0)]);
+});
+
+/* Intersentinel: at start of each level, owner's Boss heals 1 */
+(function(){
+  const e=window.CATA_ABILITIES['DS1-030']||(window.CATA_ABILITIES['DS1-030']={});
+  e.onLevelStart=function(gp,pid){
+    const boss=gp.p[pid].boss;
+    if(boss&&gp.inst[boss]&&gp.inst[boss].hp>0)healInst(gp,boss,1);
+  };
+})();
+
+/* Coney, Toothfighter: on enter, may discard a card to draw; if a Fighter was discarded, +1 atk counter on Coney */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq82se55']||(window.CATA_ABILITIES['render-mq82se55']={});
+  e.onEnter=function(gp,ctx){
+    const hand=gp.p[ctx.pid].hand.filter(u=>u!==ctx.src);
+    if(!hand.length)return;
+    pendPick(gp,{forId:ctx.pid,prompt:'Coney: discard a card to draw one?',
+      options:[{label:'Yes — pick which to discard',value:'y'},{label:'No',value:''}]},
+      (g,choice)=>{
+        if(choice!=='y')return;
+        const handNow=g.p[ctx.pid].hand.filter(u=>u!==ctx.src);
+        pendPick(g,{forId:ctx.pid,prompt:'Coney: discard which card?',
+          options:handNow.map(u=>({label:CARDS[g.inst[u].cid].name,value:u}))},
+          (g2,discard)=>{
+            if(!discard)return;
+            const dCid=g2.inst[discard].cid;
+            const dC=CARDS[dCid];
+            moveZone(g2,ctx.pid,discard,'hand','grave');
+            drawN(g2,ctx.pid,1);
+            log(g2,'Coney discards '+dC.name+', draws a card.');
+            if(dC.type==='fighter'){
+              addCounter(g2,ctx.src,'atk',1);
+              log(g2,'Fighter discarded — +1 Attack counter on Coney.');
+            }
+          });
+      });
+  };
+})();
+
+/* Dreyver, Terminarch: ②⊙ target Synth gains Agility this level */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq82vipj']||(window.CATA_ABILITIES['render-mq82vipj']={});
+  e.activated=(e.activated||[]).concat([{
+    label:'\u2461\u2299: Synth +Agility this lvl',
+    cost:{tap:true,coins:2},
+    run(gp,ctx){
+      pendTarget(gp,{forId:ctx.pid,prompt:'Dreyver: which Synth gains Agility this level?',
+        filter:i=>(i.kind==='fighter'||i.kind==='boss')&&(CARDS[i.cid]||{}).faction==='synth'&&i.owner===ctx.pid},
+        (g,t)=>{if(t){g.inst[t].agilityLevel=true;log(g,CARDS[g.inst[t].cid].name+' gains Agility this level.');}});
+    }
+  }]);
+})();
+
+/* Goodstead, Sandhog: any Fighter dies, +1 Attack counter on Goodstead */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq8327ej']||(window.CATA_ABILITIES['render-mq8327ej']={});
+  e.onAnyFighterDeath=function(gp,uid){addCounter(gp,uid,'atk',1);};
+})();
+
+/* Minka, Underestimated: same global death trigger */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq838tf0']||(window.CATA_ABILITIES['render-mq838tf0']={});
+  e.onAnyFighterDeath=function(gp,uid){addCounter(gp,uid,'atk',1);};
+})();
+
+/* Kochi, Platform Presence: onEnter heal target Fighter to max; ③⊙ team heal 1 */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq835b15']||(window.CATA_ABILITIES['render-mq835b15']={});
+  e.onEnter=function(gp,ctx){
+    const tgts=allFighters(gp).filter(u=>gp.inst[u]&&gp.inst[u].hp<gp.inst[u].maxHp);
+    if(!tgts.length){log(gp,'Kochi: no damaged Fighter to heal.');return;}
+    pendTarget(gp,{forId:ctx.pid,prompt:'Kochi: heal which Fighter to max?',filter:i=>i.kind==='fighter'&&i.hp<i.maxHp},
+      (g,t)=>{
+        if(!t)return;
+        const ti=g.inst[t];const heal=ti.maxHp-ti.hp;
+        if(heal>0)healInst(g,t,heal);
+      });
+  };
+  e.activated=(e.activated||[]).concat([{
+    label:'\u2462\u2299: Team heals 1',
+    cost:{tap:true,coins:3},
+    run(gp,ctx){eachAlly(gp,ctx.pid,u=>{const i=gp.inst[u];if(i&&i.hp<i.maxHp)healInst(gp,u,1);});}
+  }]);
+})();
+
+/* Sky, Unlikely Champion: ③⊙ reveal until Fighter, put it in hand */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq83m92b']||(window.CATA_ABILITIES['render-mq83m92b']={});
+  e.activated=(e.activated||[]).concat([{
+    label:'\u2462\u2299: Reveal until Fighter',
+    cost:{tap:true,coins:3},
+    run(gp,ctx){
+      const taken=[];
+      while(gp.p[ctx.pid].deck.length){
+        const top=gp.p[ctx.pid].deck[0];
+        const tc=CARDS[gp.inst[top].cid];
+        gp.p[ctx.pid].deck=gp.p[ctx.pid].deck.slice(1);
+        if(tc&&tc.type==='fighter'){
+          gp.p[ctx.pid].hand.push(top);
+          log(gp,'Sky reveals '+tc.name+', adds to hand.');
+          bottomShuffle(gp,ctx.pid,taken);
+          return;
+        }
+        taken.push(top);
+        log(gp,'Sky reveals '+(tc?tc.name:'?')+' (not a Fighter).');
+      }
+      bottomShuffle(gp,ctx.pid,taken);
+      log(gp,'Sky: deck exhausted, no Fighter found.');
+    }
+  }]);
+})();
+
+/* Clatter, Cornered: when attacked, reflect 1 damage to attacker */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq82rspr']||(window.CATA_ABILITIES['render-mq82rspr']={});
+  e.onAttacked=function(gp,ctx){
+    if(ctx.attacker&&gp.inst[ctx.attacker]){
+      log(gp,'Clatter reflects 1 damage to '+CARDS[gp.inst[ctx.attacker].cid].name+'.');
+      dealDamage(gp,ctx.attacker,1);
+    }
+  };
+})();
