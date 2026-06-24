@@ -68,28 +68,29 @@ function ingestCard(o){
   if(c.cost===undefined)c.cost=0;
   if(c.level===undefined&&(c.type==='fighter'||c.type==='weapon'))c.level=1;
 
-  const text=(c.text||'')+' '+(c.keywords||[]).join(' ');
-  const lowText=text.toLowerCase();
+  /* Strip out text that describes a token this card creates. Token rules text
+     (after "Create a ... token") describes the spawned token's keywords, NOT the
+     parent card's — e.g. Trapper's "It has Enforcer" applies to Bear Trap, not Trapper. */
+  let scanText = c.text || '';
+  const tokenStart = scanText.search(/Create\s[^.]{0,80}\btoken\b/i);
+  if (tokenStart >= 0) scanText = scanText.slice(0, tokenStart);
+  /* Quoted segments (curly or straight) also typically wrap token-rules — strip those too */
+  scanText = scanText.replace(/"[^"]*"/g, '').replace(/\u201C[^\u201D]*\u201D/g, '');
+  scanText += ' ' + (c.keywords||[]).join(' ');
+
+  const text = scanText;
+  const lowText = text.toLowerCase();
   /* Armor N - parse number after "Armor" */
   const armorMatch=text.match(/Armor\s+(\d+)/i);
   if(armorMatch){ c.armor=Number(armorMatch[1]); if(!c.keywords.includes('Armor'))c.keywords.push('Armor'); }
-  /* Determination - die-replacement: set to 1HP with +1 atk counter */
   if(/\bDetermination\b/.test(text)){ c.determination=true; if(!c.keywords.includes('Determination'))c.keywords.push('Determination'); }
-  /* Phantasmal - alive-state buff: tag for engine */
   if(/\bPhantasmal\b/.test(text)){ c.canPhantasmal=true; if(!c.keywords.includes('Phantasmal')&&/be(comes?|come)\s+Phantasmal/i.test(text))c.keywords.push('Phantasmal'); }
-  /* Agility - extra tap per level */
   if(/\bAgility\b/.test(text)&&!c.keywords.includes('Agility')){ c.keywords.push('Agility'); }
-  /* Stealthy */
   if(/\bStealthy\b/.test(text)&&!c.keywords.includes('Stealthy')){ c.keywords.push('Stealthy'); }
-  /* Enforcer */
   if(/\bEnforcer\b/.test(text)&&!c.keywords.includes('Enforcer')){ c.keywords.push('Enforcer'); }
-  /* Fortify - die-replacement, becomes Fortification under another unit */
   if(/\bFortify\b/.test(text)){ c.fortifyInstead=true; if(!c.keywords.includes('Fortify'))c.keywords.push('Fortify'); }
-  /* Block - ability to redirect attacks (rendered as activated, manual choice) */
   if(/\bBlock\b/.test(text)&&!c.keywords.includes('Block')){ c.keywords.push('Block'); }
-  /* Shadowstriker-style: ignores Enforcer */
   if(/can attack as though.*(?:do(?:es)? not|do(?:es)?n['\u2019]?t) have Enforcer/i.test(text)){ c.atkFlags=c.atkFlags||{}; c.atkFlags.ignoreEnforcer=true; }
-  /* Can't be blocked */
   if(/can.t be blocked/i.test(text)){ c.atkFlags=c.atkFlags||{}; c.atkFlags.unblockable=true; }
 
   if(o.id==='render-mq83vajo')c.diesEndOfLevel=true;
@@ -995,6 +996,7 @@ function hCard(gp,uid,myTurn,pend,fanOpts){
   const playable=canPlay||isInstant;
   const typeChar=c.type==='fighter'?'F':c.type==='weapon'?'W':c.type==='tactic'?'T':'R';
   const fanStyle=fanOpts?`--hand-rot:${fanOpts.rot};--hand-lift:${fanOpts.lift};`:'';
+  const canFortifyHand=myTurn&&!pend&&!S.attackPick&&c.type==='fighter'&&c.fortifyInstead&&c.faction==='synth'&&gp.p[S.myId].coins>=2&&hasFortifyHost(gp,S.myId,uid);
   return`<div class="hcard${playable?'':' unplayable'}" ${fanOpts?`data-hand-pos="${fanOpts.idx}"`:''} style="border-color:${fCol}55;${fanStyle}"
     ${playable?`onclick="playHandCard('${uid}')"`:''}
     oncontextmenu="showZoom('${i.cid}');return false">
@@ -1006,8 +1008,49 @@ function hCard(gp,uid,myTurn,pend,fanOpts){
     <div class="hcard-cost">${c.cost||0}</div>
     ${c.level?`<div class="hcard-level">L${c.level}</div>`:''}
     ${isInstant&&!canPlay?'<div class="hcard-instant">INST</div>':''}
+    ${canFortifyHand?`<button class="hcard-fortify" onclick="event.stopPropagation();fortifyFromHand('${uid}')" title="Place under a Synth ally, that Synth gains this card's Health">FORTIFY 2&#9711;</button>`:''}
   </div>`;
 }
+
+function hasFortifyHost(gp,pid,excludeUid){
+  return gp.p[pid].board.concat([gp.p[pid].boss]).some(u=>{
+    if(!u||u===excludeUid)return false;
+    const i=gp.inst[u];if(!i||i.hp<=0||i.fortifiedUnder)return false;
+    const oc=CARDS[i.cid];
+    return oc&&oc.faction==='synth'&&(oc.type==='fighter'||oc.type==='boss');
+  });
+}
+
+window.fortifyFromHand=async function(u){
+  await act(r=>{
+    const gp=r.game;const pid=S.myId;
+    if(gp.curIdx!==gp.order.indexOf(pid))return alert('Not your turn.');
+    const card=gp.inst[u];if(!card)return;
+    const c=CARDS[card.cid];
+    if(!c.fortifyInstead||c.faction!=='synth')return alert('This card has no Fortify ability.');
+    if(gp.p[pid].coins<2)return alert('Need 2 coins to Fortify.');
+    const hosts=gp.p[pid].board.concat([gp.p[pid].boss]).filter(au=>{
+      if(!au||au===u)return false;
+      const ai=gp.inst[au];if(!ai||ai.hp<=0||ai.fortifiedUnder)return false;
+      const ac=CARDS[ai.cid];
+      return ac&&ac.faction==='synth'&&(ac.type==='fighter'||ac.type==='boss');
+    });
+    if(!hosts.length)return alert('No Synth ally available to Fortify under.');
+    spendCoins(gp,pid,2);
+    pendPick(gp,{forId:pid,prompt:'Fortify '+c.name+' under which Synth ally?',
+      options:hosts.map(au=>({label:CARDS[gp.inst[au].cid].name+' ('+gp.inst[au].hp+'/'+gp.inst[au].maxHp+')',value:au}))},
+      (g,host)=>{
+        if(!host)return;
+        const hostI=g.inst[host];const addHp=c.hp||0;
+        hostI.maxHp+=addHp;hostI.hp+=addHp;
+        g.p[pid].hand=g.p[pid].hand.filter(x=>x!==u);
+        g.inst[u].fortifiedUnder=host;
+        log(g,c.name+' Fortifies from hand under '+CARDS[hostI.cid].name+' (+'+addHp+' HP).');
+      });
+    gp.p[pid].hasActed=true;
+    if(!gp.pending)nextTurn(gp);
+  });
+};
 
 function bossHpPct(gp,pid){const b=gp.inst[gp.p[pid].boss];if(!b)return 0;return(b.hp/b.maxHp)*100;}
 
