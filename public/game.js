@@ -88,7 +88,7 @@ function ingestCard(o){
   /* Block - ability to redirect attacks (rendered as activated, manual choice) */
   if(/\bBlock\b/.test(text)&&!c.keywords.includes('Block')){ c.keywords.push('Block'); }
   /* Shadowstriker-style: ignores Enforcer */
-  if(/can attack as though.*do(?:es)?n.t have Enforcer/i.test(text)){ c.atkFlags=c.atkFlags||{}; c.atkFlags.ignoreEnforcer=true; }
+  if(/can attack as though.*(?:do(?:es)? not|do(?:es)?n['\u2019]?t) have Enforcer/i.test(text)){ c.atkFlags=c.atkFlags||{}; c.atkFlags.ignoreEnforcer=true; }
   /* Can't be blocked */
   if(/can.t be blocked/i.test(text)){ c.atkFlags=c.atkFlags||{}; c.atkFlags.unblockable=true; }
 
@@ -536,6 +536,35 @@ function validDefenders(gp,attackerOwner,attackerCid){
   });
   return targets;
 }
+function canPossiblyRespond(gp,pid){
+  const ppl=gp.p[pid];if(!ppl||ppl.defeated)return false;
+  const coins=ppl.coins;
+  if(ppl.hand.some(u=>{const c=CARDS[gp.inst[u].cid];return c&&c.type==='response'&&(c.cost||0)<=coins;}))return true;
+  return ppl.board.concat([ppl.boss]).some(u=>{
+    if(!u)return false;const i=gp.inst[u];if(!i)return false;
+    const c=CARDS[i.cid];if(!c)return false;
+    return(c.activated||[]).some(ab=>{
+      if(!ab.label||!/response/i.test(ab.label))return false;
+      const cost=ab.cost||{};
+      if(cost.coins&&cost.coins>coins)return false;
+      if(cost.tap&&!canAct(gp,u))return false;
+      return true;
+    });
+  });
+}
+
+function autoSkipNoResponders(gp){
+  while(gp.responseWindow){
+    const pri=gp.responseWindow.priority;
+    if(canPossiblyRespond(gp,pri))break;
+    log(gp,gp.p[pri].name+' has no responses, auto-passing.');
+    gp.responseWindow.passed.push(pri);
+    const next=nextResponsePriority(gp,gp.responseWindow.attackerPid,gp.responseWindow.passed);
+    if(!next){resolvePendingAttack(gp);return;}
+    gp.responseWindow.priority=next;
+  }
+}
+
 function nextResponsePriority(gp,attackerPid,passed){
   const order=gp.order.filter(p=>!gp.p[p].defeated);
   const startIdx=order.indexOf(attackerPid);
@@ -564,6 +593,7 @@ function declareAttack(gp,atkUid,defUid,ctxPid){
     attackerPid:ctxPid,defenderPid,
     priority:nextPri,passed:[]
   };
+  autoSkipNoResponders(gp);
   return true;
 }
 
@@ -723,16 +753,27 @@ window.confirmAttack=async function(defUid){
 };
 window.useAbility=async function(u,idx){
   await act(r=>{const gp=r.game;const pid=S.myId;
-    if(gp.curIdx!==gp.order.indexOf(pid))return alert('Not your turn.');
     const i=gp.inst[u];const c=CARDS[i.cid];let ab=(c.activated||[])[idx];let wAb=null;
     if(ab===undefined){(i.wielded||[]).forEach(wu=>{const wc=CARDS[gp.inst[wu].cid];([...(wc.weaponActivated||[]),(wc.grantsActivated||[])]).flat().forEach((a,ai)=>{if(('w'+wu+ai)===String(idx))wAb=a;});});}
     const useAb=ab||wAb;if(!useAb)return;
+    if(gp.responseWindow){
+      if(gp.responseWindow.priority!==pid)return alert('Another player has response priority.');
+      if(!useAb.label||!/response/i.test(useAb.label))return alert('Only Response abilities can be activated right now.');
+      if(i.owner!==pid)return alert('You can only activate your own abilities.');
+    } else if(gp.curIdx!==gp.order.indexOf(pid)){
+      return alert('Not your turn.');
+    }
     if(useAb.cost.tap&&!canAct(gp,u))return alert('Already acted this level.');
     if(useAb.cost.coins&&!spendCoins(gp,pid,useAb.cost.coins))return alert('Not enough coins.');
     if(useAb.cost.tap)i.actedCount=(i.actedCount||0)+1;
     if(useAb.cost.sacrifice)destroyInstance(gp,u,{skipFortify:true});
     if(useAb.cost.selfDamage){i.hp-=useAb.cost.selfDamage;if(i.hp<=0)destroyInstance(gp,u);}
-    gp.passedSet=[];useAb.run(gp,{pid,src:u});gp.p[pid].hasActed=true;if(!gp.pending)nextTurn(gp);});
+    gp.passedSet=[];useAb.run(gp,{pid,src:u});gp.p[pid].hasActed=true;
+    if(gp.responseWindow){
+      if(!gp.pendingAttack){gp.responseWindow=null;}
+      else if(!gp.pending){resolvePendingAttack(gp);if(!gp.responseWindow)nextTurn(gp);}
+    } else if(!gp.pending){nextTurn(gp);}
+  });
 };
 /* THE BIG FIX: passedSet tracks who passed; only nextTurn if NOT advancing */
 window.passTurn=async function(){
@@ -888,6 +929,7 @@ function bCard(gp,uid,opts){
 
   const isToken=(c.kind==='token'||c.type==='token');
   if(isToken)cls+=' is-token';
+  if(wielded.length)cls+=' has-wielded';
 
   let actBtns='';
   if(!isOpp&&myTurn&&!pend&&!S.attackPick){
@@ -933,15 +975,16 @@ function bCard(gp,uid,opts){
     oncontextmenu="showZoom('${i.cid}');return false">
     ${artImg(i.cid,'bcard-art')}
     ${badgesHtml}
-    ${ptHtml}
     ${isToken?'<div class="bcard-token-ribbon">TOKEN</div>':''}
     ${S.gmMode?`<button class="bcard-gm" onclick="event.stopPropagation();gmEdit('${uid}')" title="GM edit">&#9881;</button>`:''}
     <div class="bcard-namestrip" style="background:linear-gradient(0deg,${fCol}dd,${fCol}77 60%,transparent)">
       <span class="bcard-name">${s.name}</span>
     </div>
-    ${weaponHtml}
-    ${actBtns?`<div class="bcard-acts">${actBtns}</div>`:''}
-  </div></div>`;
+    ${ptHtml}
+  </div>
+  ${weaponHtml}
+  ${actBtns?`<div class="bcard-acts">${actBtns}</div>`:''}
+  </div>`;
 }
 
 function hCard(gp,uid,myTurn,pend,fanOpts){
