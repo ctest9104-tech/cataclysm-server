@@ -918,6 +918,16 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
   background: var(--sh); color: #fff; font-family: 'Bebas Neue', cursive;
   font-size: 11px; padding: 2px 7px; border-radius: 3px;
 }
+.hcard-fortify {
+  position: absolute; bottom: 38px; left: 50%; transform: translateX(-50%); z-index: 5;
+  background: rgba(0,80,40,0.92); color: #b8ff95;
+  border: 1.5px solid #76c442; border-radius: 4px;
+  font-family: 'Bebas Neue', cursive; font-size: 10px;
+  padding: 3px 8px; letter-spacing: 0.1em; cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.6), 0 0 8px rgba(118,196,66,0.3);
+  white-space: nowrap;
+}
+.hcard-fortify:hover { background: var(--su); color: #002000; box-shadow: 0 4px 10px rgba(0,0,0,0.7), 0 0 14px rgba(118,196,66,0.6); }
 
 .zone-wrap {
   display: flex; flex-direction: column;
