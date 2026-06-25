@@ -804,7 +804,7 @@ Object.assign(window.CATA_ABILITIES, {
   // Father, Annihilator — wields weapons for no cost. Response ②, destroy: return Weapon from discard to play.
   'render-mq82yhl3': {
 
-    activated:[{label:'② Destroy: return Weapon from discard',cost:{coins:2,sacrifice:true},run(gp,ctx){
+    activated:[{label:'Response \u2461 Destroy: return Weapon from discard',cost:{coins:2,sacrifice:true},run(gp,ctx){
       const ws=gp.p[ctx.pid].grave.filter(u=>(CARDS[gp.inst[u].cid]||{}).type==='weapon');
       if(!ws.length){log(gp,'No Weapon in discard.');return;}
       pendPick(gp,{forId:ctx.pid,prompt:'Father: return which Weapon to play?',options:ws.map(u=>({label:CARDS[gp.inst[u].cid].name,value:u}))},(g,pick)=>{
@@ -1176,7 +1176,7 @@ Object.assign(window.CATA_ABILITIES, {
 
   // Tyro, Sensei's Pet — Determination (auto). Response ②⊙: another target B/F heals 2.
   'render-mq83tf41': {
-    activated:[{label:'② Heal another B/F by 2',cost:{tap:true,coins:2},run(gp,ctx){pendTarget(gp,{forId:ctx.pid,prompt:'Tyro: heal which B/F by 2?',filter:i=>(i.kind==='fighter'||i.kind==='boss')&&i.uid!==ctx.src},(g,t)=>{if(t)healInst(g,t,2);});}}]
+    activated:[{label:'Response \u2461\u2299: Heal another B/F by 2',cost:{tap:true,coins:2},run(gp,ctx){pendTarget(gp,{forId:ctx.pid,prompt:'Tyro: heal which B/F by 2?',filter:i=>(i.kind==='fighter'||i.kind==='boss')&&i.uid!==ctx.src},(g,t)=>{if(t)healInst(g,t,2);});}}]
   },
 
   // Vermingus, Brutal Busker — When Fighter enters from deck, +1 atk + 1 HP. ②⊙: Reveal top, if playable play.
