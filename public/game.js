@@ -1549,6 +1549,26 @@ function renderResponseWindow(){
   const myCoins=me?me.coins:0;
   const myHand=me?me.hand:[];
   const responses=myHand.filter(u=>{const c=CARDS[gp.inst[u].cid];return c&&c.type==='response'&&(c.cost||0)<=myCoins;});
+
+  /* Find Response activated abilities on the priority holder's board: Block on Tube Steak/Gizzard,
+     Pia's Response Fortify, etc. — anything whose label includes "Response". */
+  const respAbilities=[];
+  if(me){
+    me.board.concat([me.boss]).forEach(u=>{
+      if(!u)return;
+      const i=gp.inst[u];if(!i||i.stunned||i.hp<=0)return;
+      const c=CARDS[i.cid];if(!c)return;
+      (c.activated||[]).forEach((ab,idx)=>{
+        if(!ab.label||!/response/i.test(ab.label))return;
+        const needCoins=(ab.cost&&ab.cost.coins)||0;
+        const needsTap=!!(ab.cost&&ab.cost.tap);
+        const affordable=needCoins<=myCoins;
+        const untapped=!needsTap||(i.actedCount||0)<1;
+        respAbilities.push({uid:u,abilityIdx:idx,label:ab.label,coinCost:needCoins,affordable,untapped,disabled:!affordable||!untapped,card:c,inst:i});
+      });
+    });
+  }
+
   const priorityName=gp.p[rw.priority]&&gp.p[rw.priority].name||'?';
   return`<div class="overlay resp-overlay">
     <div class="resp-modal${isMeInvolved?' me-involved':''}">
@@ -1576,9 +1596,20 @@ function renderResponseWindow(){
         </div>
       </div>
       ${isMyPriority?`
-        <div class="resp-prompt">It's your turn to respond. Play a Response card from your hand or allow the attack.</div>
+        <div class="resp-prompt">Your priority. Play a Response from hand, activate a Response ability on the board, or allow the attack.</div>
+        ${respAbilities.length?`
+          <div class="resp-cards-label">RESPONSE ABILITIES ON YOUR BOARD</div>
+          <div class="resp-cards">${respAbilities.map(r=>`<div class="resp-card resp-board-ability${r.disabled?' disabled':''}" ${r.disabled?'':`onclick="useAbility('${r.uid}',${r.abilityIdx})"`} title="${r.card.name}: ${r.label}${r.disabled?' (cannot use)':''}">
+            ${artImg(r.inst.cid,'resp-card-img')}
+            <div class="resp-card-foot">
+              <div class="resp-card-name">${r.card.name}</div>
+              <div class="resp-card-cost">${r.coinCost}&#9711;</div>
+            </div>
+            <div class="resp-board-tag">${r.label.replace(/response\s*/i,'').slice(0,18)}</div>
+          </div>`).join('')}</div>
+        `:''}
         ${responses.length?`
-          <div class="resp-cards-label">YOUR PLAYABLE RESPONSES</div>
+          <div class="resp-cards-label">RESPONSE CARDS IN YOUR HAND</div>
           <div class="resp-cards">${responses.map(u=>{const c=CARDS[gp.inst[u].cid];return `<div class="resp-card" onclick="playHandCard('${u}')">
             ${artImg(gp.inst[u].cid,'resp-card-img')}
             <div class="resp-card-foot">
@@ -1586,7 +1617,8 @@ function renderResponseWindow(){
               <div class="resp-card-cost">${c.cost||0}&#9711;</div>
             </div>
           </div>`;}).join('')}</div>
-        `:`<div class="resp-no-cards">You have no playable Response cards.</div>`}
+        `:''}
+        ${!responses.length&&!respAbilities.length?'<div class="resp-no-cards">You have no Response cards in hand and no Response abilities on the board.</div>':''}
         <div class="resp-buttons">
           <button class="btn lg" onclick="passResponse()">ALLOW ATTACK</button>
         </div>
