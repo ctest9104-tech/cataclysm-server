@@ -1,4 +1,4 @@
-/* CATACLYSM ARCADE */
+/* CATACLYSM ARCADE Community Project */
 const SUPABASE_URL='https://mhvtcztuusjuzdjamnfo.supabase.co';
 const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1odnRjenR1dXNqdXpkamFtbmZvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4MzE1MDUsImV4cCI6MjA5NzQwNzUwNX0.b7fq9uditGv3rabTvYeAyGxJxhSAmoVK0TpyfuRBass';
 let _db=null;
@@ -215,7 +215,18 @@ window.rollDieManual=function(sides){
 
 function fireDiscardHooks(gp,discarderPid,uids){
   if(!uids||!uids.length)return;
-  allBoard(gp).forEach(u=>{const i=gp.inst[u];if(!i)return;const c=CARDS[i.cid];if(c&&c.onAnyDiscard)c.onAnyDiscard(gp,u,discarderPid,uids);});
+  allBoard(gp).forEach(u=>{const i=gp.inst[u];if(!i)return;const c=CARDS[i.cid];
+    if(c&&c.onAnyDiscard)c.onAnyDiscard(gp,{pid:i.owner,src:u,discarderPid,discardedUids:uids});});
+}
+function fireReveal(gp,pid,uid){
+  /* Called from every reveal-from-deck point (Spot, Phern, Hot Mike, Sky, Vermingus, Give The Signal, Videotape) */
+  const i=gp.inst[uid];if(!i)return;
+  const c=CARDS[i.cid];if(c&&c.onReveal)c.onReveal(gp,{pid,src:uid});
+}
+function fireFighterEnterFromDeck(gp,pid,uid){
+  /* Vermingus and similar: trigger when a Fighter enters play from a deck-reveal */
+  allBoard(gp).forEach(u=>{const i=gp.inst[u];if(!i)return;const c=CARDS[i.cid];
+    if(c&&c.onAnyFighterEnterFromDeck)c.onAnyFighterEnterFromDeck(gp,{pid:i.owner,src:u,enteringUid:uid,enteringPid:pid});});
 }
 
 /* Cost modifier — adjust an attack/ability cost by board state. */
@@ -891,7 +902,8 @@ window.gmDraw=async function(pid){
 window.gmDiscard=async function(pid){
   await act(r=>{const gp=r.game;const hand=gp.p[pid].hand;if(!hand.length)return;
     const u=hand[hand.length-1];moveZone(gp,pid,u,'hand','grave');
-    log(gp,'[GM] '+gp.p[pid].name+' discards '+CARDS[gp.inst[u].cid].name+'.');});
+    log(gp,'[GM] '+gp.p[pid].name+' discards '+CARDS[gp.inst[u].cid].name+'.');
+    fireDiscardHooks(gp,pid,[u]);});
 };
 window.gmAdvanceLevel=async function(){
   if(!confirm('Force advance to next level?'))return;
@@ -1653,12 +1665,6 @@ function rollDieVisible(sides,reason,cb){
     },70);
   }catch(e){cb&&cb(result);}
   return result;
-}
-
-function fireDiscardHooks(gp,discarderPid,uids){
-  if(!uids||!uids.length)return;
-  allBoard(gp).forEach(u=>{const i=gp.inst[u];if(!i)return;const c=CARDS[i.cid];
-    if(c&&c.onAnyDiscard)c.onAnyDiscard(gp,{pid:i.owner,src:u,discarderPid,discardedUids:uids});});
 }
 
 function effectiveAtkCost(gp,uid){
