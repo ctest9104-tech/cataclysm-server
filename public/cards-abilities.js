@@ -437,6 +437,7 @@ window.CATA_ABILITIES = {
     onEnter(gp,ctx){
       const deck=gp.p[ctx.pid].deck;
       const top=deck.slice(0,4);
+      top.forEach(u=>fireReveal(gp,ctx.pid,u));
       const eligible=top.filter(u=>{const c=CARDS[gp.inst[u].cid];return c&&(c.type==='tactic'||c.type==='response')&&(c.cost||0)<=3;});
       if(eligible.length){
         pendPick(gp,{forId:ctx.pid,prompt:'Phern: reveal a Tactic/Response (cost ≤3) to your hand?',options:eligible.map(u=>({label:CARDS[gp.inst[u].cid].name,value:u})).concat([{label:'Skip (+1 atk on Phern)',value:''}])},(g,pick)=>{
@@ -462,6 +463,7 @@ window.CATA_ABILITIES = {
   'render-mq83mxj8': {
     onEnter(gp,ctx){
       const deck=gp.p[ctx.pid].deck;const top=deck.slice(0,4);
+      top.forEach(u=>fireReveal(gp,ctx.pid,u));
       const weapons=top.filter(u=>(CARDS[gp.inst[u].cid]||{}).type==='weapon');
       if(weapons.length){
         pendPick(gp,{forId:ctx.pid,prompt:'Spot: reveal a Weapon to your hand?',options:weapons.map(u=>({label:CARDS[gp.inst[u].cid].name,value:u})).concat([{label:'Skip (+1 atk on Spot)',value:''}])},(g,pick)=>{
@@ -974,6 +976,7 @@ Object.assign(window.CATA_ABILITIES, {
     run(gp,ctx){
       const top=gp.p[ctx.pid].deck.slice(0,5);
       log(gp,'Give The Signal reveals top 5: '+top.map(u=>CARDS[gp.inst[u].cid].name).join(', '));
+      top.forEach(u=>fireReveal(gp,ctx.pid,u));
 
       const synths=top.filter(u=>{const c=CARDS[gp.inst[u].cid];return c&&c.type==='fighter'&&c.faction==='synth';});
       const handled=new Set();
@@ -1032,6 +1035,7 @@ Object.assign(window.CATA_ABILITIES, {
       const top=gp.p[ctx.pid].deck.slice(0,4);
       const survF=top.filter(u=>{const c=CARDS[gp.inst[u].cid];return c&&c.type==='fighter'&&c.faction==='survivor';});
       log(gp,'Videotape reveals top 4: '+top.map(u=>CARDS[gp.inst[u].cid].name).join(', '));
+      top.forEach(u=>fireReveal(gp,ctx.pid,u));
       const handled=new Set();
       const askNext=(g,idx)=>{
         if(idx>=survF.length){
@@ -1669,6 +1673,7 @@ BLOCK_ONE.forEach(cid=>{const e=window.CATA_ABILITIES[cid]||(window.CATA_ABILITI
         const top=gp.p[ctx.pid].deck[0];
         const tc=CARDS[gp.inst[top].cid];
         gp.p[ctx.pid].deck=gp.p[ctx.pid].deck.slice(1);
+        fireReveal(gp,ctx.pid,top);
         if(tc&&tc.type==='fighter'){
           gp.p[ctx.pid].hand.push(top);
           log(gp,'Sky reveals '+tc.name+', adds to hand.');
@@ -1692,5 +1697,109 @@ BLOCK_ONE.forEach(cid=>{const e=window.CATA_ABILITIES[cid]||(window.CATA_ABILITI
       log(gp,'Clatter reflects 1 damage to '+CARDS[gp.inst[ctx.attacker].cid].name+'.');
       dealDamage(gp,ctx.attacker,1);
     }
+  };
+})();
+
+/* ──────── Audit-pass corrections: per-card accuracy fixes ──────── */
+
+/* Lyra reveal-from-deck: draws a card whenever she's revealed by any effect */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq836emw']||(window.CATA_ABILITIES['render-mq836emw']={});
+  e.onReveal=function(gp,ctx){
+    drawN(gp,ctx.pid,1);
+    log(gp,'Lyra revealed from deck \u2014 draw a card.');
+  };
+})();
+
+/* Oriana, Cutthroat: any player discards → Oriana deals 1 dmg to target B/F (her owner picks) */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq83cnrg']||(window.CATA_ABILITIES['render-mq83cnrg']={});
+  e.onAnyDiscard=function(gp,ctx){
+    const owner=ctx.pid;
+    pendTarget(gp,{forId:owner,prompt:'Oriana: 1 damage to which Boss or Fighter? (any opponent discarded)',
+      filter:i=>i.kind==='fighter'||i.kind==='boss'},
+      (g,t)=>{if(t)dealDamage(g,t,1);});
+  };
+})();
+
+/* Tryp, Timelost: when YOU discard → 1 dmg to all opposing Bosses and Fighters */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq83siwj']||(window.CATA_ABILITIES['render-mq83siwj']={});
+  const existing=e.onAttack;
+  e.onAnyDiscard=function(gp,ctx){
+    if(ctx.discarderPid!==ctx.pid)return;
+    eachOpponent(gp,ctx.pid,oppPid=>{
+      gp.p[oppPid].board.forEach(u=>{const i=gp.inst[u];if(i&&i.kind==='fighter')dealDamage(gp,u,1);});
+      const bb=gp.p[oppPid].boss;if(bb&&gp.inst[bb])dealDamage(gp,bb,1);
+    });
+    log(gp,'Tryp deals 1 damage to all opposing Bosses and Fighters.');
+  };
+})();
+
+/* Gauntlet of the Dead: when wielder attacks, reveal top card; play it OR +1 atk counter on wielder + may discard revealed */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq83191n']||(window.CATA_ABILITIES['render-mq83191n']={});
+  e.onWielderAttack=function(gp,wielderUid){
+    const i=gp.inst[wielderUid];if(!i)return;
+    const pid=i.owner;const top=gp.p[pid].deck[0];if(!top)return;
+    const tc=CARDS[gp.inst[top].cid];
+    const lvlOk=!tc.level||tc.level<=gp.level;
+    const costOk=gp.p[pid].coins>=(tc.cost||0);
+    const canPlay=lvlOk&&costOk;
+    log(gp,'Gauntlet reveals '+tc.name+'.');
+    fireReveal(gp,pid,top);
+    pendPick(gp,{forId:pid,prompt:'Gauntlet revealed '+tc.name+canPlay?'. Play it now?':'. (Cannot play \u2014 level/cost). Take counter instead.',
+      options:canPlay?[{label:'Play '+tc.name+' (free)',value:'play'},{label:'Decline (+1 atk counter on wielder)',value:'pass'}]
+                    :[{label:'+1 atk counter on wielder',value:'pass'}]},
+      (g,choice)=>{
+        if(choice==='play'){
+          g.p[pid].deck=g.p[pid].deck.slice(1);
+          if(tc.type==='fighter'){g.p[pid].board.push(top);resetInstance(g,top);fireOnEnter(g,top,pid);fireFighterEnterFromDeck(g,pid,top);}
+          else if(tc.type==='weapon'){g.p[pid].board.push(top);
+            pendTarget(g,{forId:pid,prompt:'Wield '+tc.name+' to which Fighter?',filter:i=>i.kind==='fighter'&&i.owner===pid},
+              (g2,f)=>{if(f)wieldWeapon(g2,top,f);});}
+          else{moveZone(g,pid,top,'deck','grave');if(tc.run)tc.run(g,{pid,src:top});}
+        }else{
+          addCounter(g,wielderUid,'atk',1);
+          pendPick(g,{forId:pid,prompt:'Discard the revealed '+tc.name+'?',
+            options:[{label:'Yes \u2014 to discard',value:'y'},{label:'No \u2014 keep on top',value:''}]},
+            (g2,v)=>{if(v==='y'){g2.p[pid].deck=g2.p[pid].deck.slice(1);g2.p[pid].grave.push(top);log(g2,tc.name+' moved to discard.');}});
+        }
+      });
+  };
+})();
+
+/* Vermingus: tighten activated ability + add the triggered "Fighter enters from deck → +1 atk + 1 Health" */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq83u22z']||(window.CATA_ABILITIES['render-mq83u22z']={});
+  e.activated=[{label:'\u2461\u2299: Reveal top, play if Fighter',cost:{tap:true,coins:2},run(gp,ctx){
+    const u=gp.p[ctx.pid].deck[0];if(!u){log(gp,'Deck empty.');return;}
+    const c=CARDS[gp.inst[u].cid];log(gp,'Vermingus reveals '+c.name+'.');
+    fireReveal(gp,ctx.pid,u);
+    if(c.type==='fighter'){
+      const lvlOk=!c.level||c.level<=gp.level;
+      const sameNameOnTeam=gp.p[ctx.pid].board.some(x=>x!==u&&CARDS[gp.inst[x].cid]&&CARDS[gp.inst[x].cid].name===c.name);
+      if(lvlOk&&!sameNameOnTeam){
+        gp.p[ctx.pid].deck.shift();
+        gp.p[ctx.pid].board.push(u);
+        resetInstance(gp,u);
+        fireOnEnter(gp,u,ctx.pid);
+        fireFighterEnterFromDeck(gp,ctx.pid,u);
+      } else {
+        gp.p[ctx.pid].deck.shift();
+        gp.p[ctx.pid].hand.push(u);
+        log(gp,lvlOk?'Same-name Fighter already on team \u2014 to hand.':'Level requirement not met \u2014 to hand.');
+      }
+    } else {
+      gp.p[ctx.pid].deck.shift();
+      gp.p[ctx.pid].hand.push(u);
+    }
+  }}];
+  e.onAnyFighterEnterFromDeck=function(gp,ctx){
+    if(ctx.enteringPid!==ctx.pid)return;
+    if(ctx.enteringUid===ctx.src)return;
+    addCounter(gp,ctx.src,'atk',1);
+    const i=gp.inst[ctx.src];if(i){i.maxHp+=1;i.hp+=1;}
+    log(gp,'Vermingus: +1 Attack counter and +1 Health (Fighter entered from deck).');
   };
 })();
