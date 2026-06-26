@@ -1,4 +1,4 @@
-/* CATACLYSM ARCADE Community Project */
+/* CATACLYSM ARCADE Community Project Not affiliated with Mothership Games just a splice of TCG codes with added mechanics */
 const SUPABASE_URL='https://mhvtcztuusjuzdjamnfo.supabase.co';
 const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1odnRjenR1dXNqdXpkamFtbmZvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4MzE1MDUsImV4cCI6MjA5NzQwNzUwNX0.b7fq9uditGv3rabTvYeAyGxJxhSAmoVK0TpyfuRBass';
 let _db=null;
@@ -153,18 +153,7 @@ function setTempAtk(gp,uid,amt){const i=gp.inst[uid];if(!i)return;i.tempAtk=(i.t
 function stopAttack(gp){if(gp.pendingAttack){log(gp,'Attack stopped!');gp.pendingAttack=null;}}
 function rollDie(n){return 1+Math.floor(Math.random()*(n||6));}
 
-/* Visible dice roll — animated die that displays a tumbling result, then calls cb(result).
-   Used by Lacey/Sage automatically; also available via GM "Roll Die" button. */
-function rollDieVisible(sides,reason,cb){
-  sides=sides||6;
-  if(typeof document==='undefined'||typeof window==='undefined'){cb&&cb(rollDie(sides));return;}
-  const result=rollDie(sides);
-  const ov=document.createElement('div');ov.className='fx-dice-overlay';
-  const die=document.createElement('div');die.className='fx-die';die.textContent='?';
-  const lbl=document.createElement('div');lbl.className='fx-die-lbl';lbl.textContent=reason||'Rolling d'+sides+'...';
-  ov.appendChild(die);ov.appendChild(lbl);document.body.appendChild(ov);
-  let frame=0;const iv=setInterval(()=>{die.textContent=1+Math.floor(Math.random()*sides);frame++;if(frame>=14){clearInterval(iv);die.textContent=result;die.classList.add('fx-die-settled');lbl.textContent=(reason?reason+' \u2014 ':'')+'rolled '+result;setTimeout(()=>{ov.remove();cb&&cb(result);},900);}},70);
-}
+/* rollDieVisible defined later (canonical version with try/catch). */
 
 function transformInstance(gp,uid,maxLevel,opts){
   const i=gp.inst[uid];if(!i)return;
@@ -250,22 +239,7 @@ function effectiveCost(gp,pid,baseCost,kind){
   return Math.max(0,cost);
 }
 
-function isUntargetable(gp,uid,attackerPid){
-  const i=gp.inst[uid];if(!i)return false;const c=CARDS[i.cid];if(!c)return false;
-  /* Stealthy on the level it entered (existing rule handled by validDefenders) */
-  /* Seeya, Later Gator — can't be attacked if 5+ Fighters on your team */
-  if(c.id==='render-mq83jdnu'&&myFighters(gp,i.owner).length>=5)return true;
-  /* Zanni, Nobody's Fool — can't be attacked, period */
-  if(c.id==='render-mq83wcyl')return true;
-  /* Flank, Packleader — can't be attacked if 4+ Fighters on team */
-  if(c.id==='render-mq82yz0l'&&myFighters(gp,i.owner).length>=4)return true;
-  /* Tantrum + Whump! on same team */
-  if(c.id==='render-mq83ph11'){
-    const hasWhump=gp.p[i.owner].board.some(u=>(CARDS[gp.inst[u].cid]||{}).name==='Whump!');
-    if(hasWhump)return true;
-  }
-  return false;
-}
+/* isUntargetable defined later (canonical version with all conditions). */
 
 loadCardDatabase();
 
@@ -580,12 +554,7 @@ function _transformInstanceFallback(gp,uid){
 }
 
 /* COMBAT */
-function effectiveAtkCost(gp,uid){
-  const i=gp.inst[uid];if(!i)return 0;const c=CARDS[i.cid];if(!c)return 0;
-  let cost=i.costOverrideLevel!==undefined?i.costOverrideLevel:(c.atkCost||0);
-  if(c.faction==='synth'&&i.cid!=='dreyver'&&gp.p[i.owner].board.some(u=>gp.inst[u]&&gp.inst[u].cid==='dreyver'&&gp.inst[u].hp>0))cost=Math.max(1,cost-1);
-  return Math.max(0,cost);
-}
+/* effectiveAtkCost defined later (canonical version with all modifiers). */
 function canAct(gp,uid){const i=gp.inst[uid];if(!i)return false;const c=CARDS[i.cid];if(!c)return false;const dynAg=c.dynamicKeyword&&c.dynamicKeyword(gp,uid,'Agility');const maxActs=(i.agilityLevel||c.grantsKeyword==='agility'||hasWieldedAgility(gp,uid)||dynAg||(c.keywords||[]).includes('Agility'))?2:1;if(i.stunned)return false;return(i.actedCount||0)<maxActs;}
 function validDefenders(gp,attackerOwner,attackerCid){
   if(!attackerCid)return[];const c=CARDS[attackerCid];if(!c)return[];let targets=[];
@@ -724,13 +693,14 @@ function combatDamage(gp,atkUid,defUid){
 function finishAttackDamage(gp,ctx){
   const dmg=combatDamage(gp,ctx.attacker,ctx.defender);
   const defenderCidBefore=gp.inst[ctx.defender]?gp.inst[ctx.defender].cid:null;
+  const ac=CARDS[(gp.inst[ctx.attacker]||{}).cid];
   dealDamage(gp,ctx.defender,dmg);
   (gp.inst[ctx.attacker]&&gp.inst[ctx.attacker].wielded||[]).forEach(wu=>{const wc=CARDS[gp.inst[wu].cid];if(wc&&wc.onWielderDealtDamage)wc.onWielderDealtDamage(gp,ctx.attacker,dmg);});
   /* Attacker-side dealt-damage hook (Kat Five and similar carry-damage effects) */
   if(dmg>0&&ac&&ac.onAttackerDealtDamage){
     ac.onAttackerDealtDamage(gp,ctx.attacker,{pid:ctx.pid,defender:ctx.defender,amount:dmg});
   }
-  const ac=CARDS[(gp.inst[ctx.attacker]||{}).cid];if(ac&&ac.onAttack)ac.onAttack(gp,{pid:ctx.pid,src:ctx.attacker});
+  if(ac&&ac.onAttack)ac.onAttack(gp,{pid:ctx.pid,src:ctx.attacker});
   if(ac)log(gp,ac.name+' attacks for '+dmg+' damage.');
   /* Did the attacker kill the defender? Fire onAttackKill (Trouble, Muck, Charlotte). */
   const defGone=!gp.inst[ctx.defender]||gp.inst[ctx.defender].hp<=0;
