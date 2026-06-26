@@ -1252,15 +1252,26 @@ Object.assign(window.CATA_ABILITIES, {
 Object.assign(window.CATA_ABILITIES, {
   // The Blue Gelati — When attacks, may pay ① for +X atk equal to a Weapon's attack. Fortify on death (auto).
   'render-mq83q0bf': {
-    onAttack(gp,ctx){
-      if(gp.p[ctx.pid].coins<1)return;
+    preAttack(gp,ctx){
       const weapons=allBoard(gp).filter(u=>(CARDS[gp.inst[u].cid]||{}).type==='weapon');
-      if(!weapons.length)return;
-      pendPick(gp,{forId:ctx.pid,prompt:'Blue Gelati: pay ① for +X atk (X = weapon\u2019s Atk)?',options:weapons.map(u=>({label:CARDS[gp.inst[u].cid].name+' (+'+(CARDS[gp.inst[u].cid].atkMod||0)+')',value:u})).concat([{label:'Skip',value:''}])},(g,pick)=>{
-        if(pick){const bonus=CARDS[g.inst[pick].cid].atkMod||0;g.p[ctx.pid].coins-=1;setTempAtk(g,ctx.src,bonus);}
-      });
+      const canBoost=gp.p[ctx.pid].coins>=1&&weapons.length>0;
+      if(!canBoost){finishAttackDamage(gp,ctx);return;}
+      pendPick(gp,{forId:ctx.pid,prompt:'Blue Gelati attacks: pay \u2460 for +X Attack equal to a weapon\u2019s Attack value?',
+        options:[{label:'Yes \u2014 pick weapon',value:'y'},{label:'No (attack as is)',value:''}]},
+        (g,choice)=>{
+          if(choice!=='y'){finishAttackDamage(g,ctx);return;}
+          pendPick(g,{forId:ctx.pid,prompt:'Blue Gelati: copy which weapon\u2019s Attack value?',
+            options:weapons.map(u=>{const wc=CARDS[g.inst[u].cid];return{label:wc.name+' (+'+(wc.atkMod||0)+' atk)',value:u};})},
+            (g2,pick)=>{
+              if(!pick){finishAttackDamage(g2,ctx);return;}
+              const bonus=CARDS[g2.inst[pick].cid].atkMod||0;
+              g2.p[ctx.pid].coins-=1;
+              g2.inst[ctx.attacker].tempAtk=(g2.inst[ctx.attacker].tempAtk||0)+bonus;
+              log(g2,'Blue Gelati pays \u2460, copies '+CARDS[g2.inst[pick].cid].name+' attack (+'+bonus+').');
+              finishAttackDamage(g2,ctx);
+            });
+        });
     }
-    /* fortifyInstead auto-set via text-scan */
   },
   // Trouble, Forerunner — Others cost ① more to activate. When defeats Fighter, gain ②.
   'render-mq83senr': {
@@ -1337,7 +1348,7 @@ Object.assign(window.CATA_ABILITIES, {
     }
   },
 
-  // Sage, Fair Fighter — use VISIBLE dice in attack loop
+  // Sage, Fair Fighter — use VISIBLE dice in attack loop (preAttack so buff applies BEFORE damage)
   'render-mq83i27x': {
     onEnter(gp,ctx){
       const ws=allBoard(gp).filter(u=>(CARDS[gp.inst[u].cid]||{}).type==='weapon');
@@ -1346,14 +1357,24 @@ Object.assign(window.CATA_ABILITIES, {
         if(pick){const lvl=(CARDS[g.inst[pick].cid]||{}).level||0;destroyInstance(g,pick,{skipFortify:true});const me=g.inst[ctx.src];me.maxHp+=lvl;me.hp+=lvl;log(g,'Sage gains '+lvl+' HP.');}
       });
     },
-    onAttack(gp,ctx){
-      const keepRolling=()=>rollDieVisible(6,'Sage attacks: d6',(r)=>{
-        act(rm=>{const gp2=rm.game;log(gp2,'Sage rolls a '+r+'.');
-          if(r>=4){setTempAtk(gp2,ctx.src,1);}
+    preAttack(gp,ctx){
+      let total=0;
+      const rollOnce=()=>{
+        rollDieVisible(6,'Sage attacks: d6',(r)=>{
+          act(rm=>{const gp2=rm.game;
+            log(gp2,'Sage rolls a '+r+'.');
+            if(r>=4){
+              total+=1;
+              gp2.inst[ctx.attacker].tempAtk=(gp2.inst[ctx.attacker].tempAtk||0)+1;
+              setTimeout(rollOnce,600);
+            } else {
+              log(gp2,'Sage final attack bonus: +'+total+'.');
+              finishAttackDamage(gp2,ctx);
+            }
+          });
         });
-        if(r>=4)setTimeout(keepRolling,600);
-      });
-      keepRolling();
+      };
+      rollOnce();
     }
   },
 
@@ -1379,18 +1400,20 @@ Object.assign(window.CATA_ABILITIES, {
 
   // Whiskers of the Ancient — Wielder attacks → becomes any faction this level; +1 atk per faction on your team.
   'render-mq83v8ob': {
-    onWielderAttack(gp,wielderUid){
+    onWielderPreAttack(gp,ctx){
+      const wielderUid=ctx.attacker;
       const pid=gp.inst[wielderUid].owner;
       pendPick(gp,{forId:pid,prompt:'Whiskers: choose faction for wielder this level',options:[
         {label:'Synth',value:'synth'},{label:'Mystic',value:'mystic'},{label:'Shifter',value:'shifter'},{label:'Survivor',value:'survivor'},{label:'Apex',value:'apex'}
       ]},(g,fac)=>{
-        if(!fac)return;
+        if(!fac){finishAttackDamage(g,ctx);return;}
         g.inst[wielderUid].tempFaction=fac;
-
         const factions=new Set();
         eachAlly(g,pid,u=>{const fc=CARDS[g.inst[u].cid];if(fc&&fc.faction)factions.add(g.inst[u].tempFaction||fc.faction);});
-        const bonus=factions.size;setTempAtk(g,wielderUid,bonus);
+        const bonus=factions.size;
+        g.inst[wielderUid].tempAtk=(g.inst[wielderUid].tempAtk||0)+bonus;
         log(g,'Whiskers: wielder is now '+fac+' (+'+bonus+' Atk this level).');
+        finishAttackDamage(g,ctx);
       });
     }
   },
@@ -1801,5 +1824,996 @@ BLOCK_ONE.forEach(cid=>{const e=window.CATA_ABILITIES[cid]||(window.CATA_ABILITI
     addCounter(gp,ctx.src,'atk',1);
     const i=gp.inst[ctx.src];if(i){i.maxHp+=1;i.hp+=1;}
     log(gp,'Vermingus: +1 Attack counter and +1 Health (Fighter entered from deck).');
+  };
+})();
+
+/* ──────── Batch 2: Boss accuracy fixes ──────── */
+
+/* Charlotte: link helpers (linkFighter, returnLinkedFighters) and dynamicAtkBonus + grantsActivated */
+function linkFighter(gp,charlotteUid,defenderUid){
+  const ci=gp.inst[charlotteUid];if(!ci)return;
+  const di=gp.inst[defenderUid];if(!di)return;
+  /* If another Fighter is already linked, send it to its owner's discard ("replaced") */
+  if(ci.linkedFighter){
+    const oldUid=ci.linkedFighter;const oi=gp.inst[oldUid];
+    if(oi){gp.p[oi.owner].grave.push(oldUid);log(gp,'Charlotte: linked '+CARDS[oi.cid].name+' is replaced \u2014 to discard.');}
+    ci.linkedFighter=null;
+  }
+  /* Remove defeated Fighter from grave (destroyInstance has already moved it there) */
+  gp.p[di.owner].grave=gp.p[di.owner].grave.filter(u=>u!==defenderUid);
+  /* Put it into the linked zone (off-board, attached to Charlotte) */
+  di.hp=di.maxHp;di.linkedTo=charlotteUid;
+  ci.linkedFighter=defenderUid;
+  log(gp,'Charlotte links '+CARDS[di.cid].name+'.');
+}
+function returnLinkedFighters(gp,charlotteUid){
+  const ci=gp.inst[charlotteUid];if(!ci||!ci.linkedFighter)return;
+  const oldUid=ci.linkedFighter;const oi=gp.inst[oldUid];
+  if(oi){gp.p[oi.owner].grave.push(oldUid);log(gp,'Charlotte dies \u2014 linked '+CARDS[oi.cid].name+' to discard.');}
+  ci.linkedFighter=null;
+}
+(function(){
+  const e=window.CATA_ABILITIES['render-mq82qy7i']||(window.CATA_ABILITIES['render-mq82qy7i']={});
+  e.dynamicAtkBonus=function(gp,uid){
+    const i=gp.inst[uid];if(!i||!i.linkedFighter)return 0;
+    const li=gp.inst[i.linkedFighter];if(!li)return 0;
+    const lc=CARDS[li.cid];return lc&&lc.atk||0;
+  };
+  /* Activated abilities of the linked Fighter become Charlotte's */
+  e.grantsActivatedFromLinked=true; /* engine should scan and append linked Fighter's activated to Charlotte's render */
+})();
+
+/* Blades, Triumphant: ④⊙ reveal up to 2 Fighters from top 4, take to hand, rest on bottom random */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq82ocja']||(window.CATA_ABILITIES['render-mq82ocja']={});
+  e.activated=[{label:'\u2463\u2299: Look at top 4, take up to 2 Fighters',cost:{tap:true,coins:4},run(gp,ctx){
+    const top=gp.p[ctx.pid].deck.slice(0,4);
+    if(!top.length)return;
+    top.forEach(u=>fireReveal(gp,ctx.pid,u));
+    const fighters=top.filter(u=>(CARDS[gp.inst[u].cid]||{}).type==='fighter');
+    if(!fighters.length){log(gp,'Blades: no Fighters in top 4. Shuffling to bottom.');bottomShuffle(gp,ctx.pid,top);gp.p[ctx.pid].deck=gp.p[ctx.pid].deck.filter(x=>!top.includes(x));return;}
+    /* First pick */
+    pendPick(gp,{forId:ctx.pid,prompt:'Blades: take which Fighter to hand? (1 of up to 2)',options:fighters.map(u=>({label:CARDS[gp.inst[u].cid].name,value:u})).concat([{label:'Take none \u2014 bottom-shuffle rest',value:''}])},(g,first)=>{
+      if(!first){bottomShuffle(g,ctx.pid,top);g.p[ctx.pid].deck=g.p[ctx.pid].deck.filter(x=>!top.includes(x));return;}
+      g.p[ctx.pid].deck=g.p[ctx.pid].deck.filter(x=>x!==first);
+      g.p[ctx.pid].hand.push(first);
+      log(g,'Blades reveals '+CARDS[g.inst[first].cid].name+' to hand.');
+      const remaining=fighters.filter(u=>u!==first);
+      if(!remaining.length){const rest=top.filter(x=>x!==first);bottomShuffle(g,ctx.pid,rest);g.p[ctx.pid].deck=g.p[ctx.pid].deck.filter(x=>!rest.includes(x));return;}
+      pendPick(g,{forId:ctx.pid,prompt:'Blades: take a 2nd Fighter to hand?',options:remaining.map(u=>({label:CARDS[g.inst[u].cid].name,value:u})).concat([{label:'No \u2014 bottom-shuffle rest',value:''}])},(g2,second)=>{
+        if(second){
+          g2.p[ctx.pid].deck=g2.p[ctx.pid].deck.filter(x=>x!==second);
+          g2.p[ctx.pid].hand.push(second);
+          log(g2,'Blades reveals '+CARDS[g2.inst[second].cid].name+' to hand.');
+        }
+        const rest=top.filter(x=>x!==first&&x!==second);
+        bottomShuffle(g2,ctx.pid,rest);
+        g2.p[ctx.pid].deck=g2.p[ctx.pid].deck.filter(x=>!rest.includes(x));
+      });
+    });
+  }}];
+})();
+
+/* Mother May Eye: ⊙ persistent top-revealed mode for rest of level + Agility when 3+ T/R played */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq83a3v4']||(window.CATA_ABILITIES['render-mq83a3v4']={});
+  /* Track when she's activated; persistent mode = topRevealed flag like Hot Mike */
+  e.activated=[{label:'\u2299: Reveal top of deck this level',cost:{tap:true},run(gp,ctx){
+    gp.p[ctx.pid].topRevealed=true;
+    gp.p[ctx.pid].topRevealedUntilLevel=gp.level;
+    log(gp,'Mother May Eye: top of '+gp.p[ctx.pid].name+'\u2019s deck revealed for the rest of this level. Tactic/Response cards on top are playable.');
+  }}];
+  /* Original onLevelStart: reset T/R counter + clear topRevealed if it was set last level */
+  e.onLevelStart=function(gp,pid){
+    gp._trPlayed=gp._trPlayed||{};gp._trPlayed[pid]=0;
+    if(gp.p[pid].topRevealedUntilLevel!==undefined&&gp.p[pid].topRevealedUntilLevel<gp.level){
+      gp.p[pid].topRevealed=false;delete gp.p[pid].topRevealedUntilLevel;
+    }
+  };
+  /* Engine hook fired when a T/R card is played; we'll mark Agility on threshold via onTacticPlayed */
+  e.onAnyTacticOrResponsePlayed=function(gp,pid){
+    if(!gp._trPlayed)gp._trPlayed={};
+    gp._trPlayed[pid]=(gp._trPlayed[pid]||0)+1;
+    if(gp._trPlayed[pid]>=3){
+      const boss=gp.p[pid].boss;
+      if(boss&&gp.inst[boss]&&CARDS[gp.inst[boss].cid].id==='render-mq83a3v4'){
+        if(!gp.inst[boss].agilityLevel){
+          gp.inst[boss].agilityLevel=true;
+          log(gp,'Mother May Eye gains Agility this level (3+ Tactics/Responses played).');
+        }
+      }
+    }
+  };
+})();
+
+/* Seeya, Later Gator: untargetable when 5+ Fighters (engine ✓); first-attack-each-level reveal */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq83jdnu']||(window.CATA_ABILITIES['render-mq83jdnu']={});
+  e.onAttacked=function(gp,ctx){
+    const i=gp.inst[ctx.src];if(!i)return;
+    i._seeyaTriggeredLevel=i._seeyaTriggeredLevel||0;
+    if(i._seeyaTriggeredLevel>=gp.level)return; /* already triggered this level */
+    i._seeyaTriggeredLevel=gp.level;
+    const top=gp.p[i.owner].deck[0];
+    if(!top){log(gp,'Seeya: deck empty.');return;}
+    const tc=CARDS[gp.inst[top].cid];
+    log(gp,'Seeya reveals '+tc.name+' from top.');
+    fireReveal(gp,i.owner,top);
+    if(tc.type==='fighter'){
+      gp.p[i.owner].deck=gp.p[i.owner].deck.slice(1);
+      gp.p[i.owner].hand.push(top);
+      log(gp,'Seeya: '+tc.name+' to hand.');
+    } else {
+      log(gp,'Seeya: '+tc.name+' is not a Fighter \u2014 stays on top.');
+    }
+  };
+})();
+
+/* Toolshed: after creating Toolbox, prompt to wield a weapon */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq83r7oj']||(window.CATA_ABILITIES['render-mq83r7oj']={});
+  e.activated=[{label:'\u2462\u2299: Create Toolbox',cost:{tap:true,coins:3},run(gp,ctx){
+    createToken(gp,ctx.pid,'render-mq83qps3');
+    /* Find the newly-created Toolbox uid: most recent board entry */
+    const toolbox=gp.p[ctx.pid].board.filter(u=>(CARDS[gp.inst[u].cid]||{}).id==='render-mq83qps3').pop();
+    if(!toolbox)return;
+    /* Find this owner's wieldable weapons in play (currently not on Toolbox) */
+    const weapons=gp.p[ctx.pid].board.filter(u=>{const i=gp.inst[u];return i&&CARDS[i.cid].type==='weapon'&&(i.wielderUid!==toolbox);});
+    if(!weapons.length)return;
+    pendPick(gp,{forId:ctx.pid,prompt:'Toolshed: wield which Weapon to Toolbox?',options:weapons.map(u=>({label:CARDS[gp.inst[u].cid].name,value:u})).concat([{label:'Skip \u2014 don\u2019t wield',value:''}])},(g,pick)=>{
+      if(pick)wieldWeapon(g,pick,toolbox);
+    });
+  }}];
+})();
+
+/* Mon-Sewer Mayhem: fire reveal hook for each card revealed in the search */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq839jkk']||(window.CATA_ABILITIES['render-mq839jkk']={});
+  e.activated=[{label:'\u2461\u2299: Search for Weapon',cost:{tap:true,coins:2},run(gp,ctx){
+    const deck=gp.p[ctx.pid].deck;const skipped=[];let found=null;
+    while(deck.length){
+      const u=deck.shift();
+      fireReveal(gp,ctx.pid,u);
+      const c=CARDS[gp.inst[u].cid];
+      if(c&&c.type==='weapon'){found=u;break;}
+      skipped.push(u);
+    }
+    gp.p[ctx.pid].deck=shuffle(deck.concat(skipped));
+    if(found){gp.p[ctx.pid].hand.push(found);log(gp,'Mon-Sewer reveals '+CARDS[gp.inst[found].cid].name+' to hand.');}
+    else log(gp,'Mon-Sewer: no Weapon found.');
+  }}];
+})();
+
+/* Eff with me Ammo: dynamic Agility check (rather than per-level snapshot) */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq82wdi3']||(window.CATA_ABILITIES['render-mq82wdi3']={});
+  /* Override onLevelStart to do nothing — Agility is checked dynamically via dynamicKeyword */
+  e.onLevelStart=function(gp,pid){};
+  e.dynamicKeyword=function(gp,uid,kw){
+    if(kw!=='Agility')return false;
+    const i=gp.inst[uid];if(!i)return false;
+    return gp.p[i.owner].board.some(u=>(CARDS[(gp.inst[u]||{}).cid]||{}).name==='Head Rat'&&gp.inst[u].hp>0);
+  };
+})();
+
+/* ──────── Batch 3: Weapon accuracy fixes ──────── */
+
+/* Helper: build a Response Block ability that can be invoked from a weapon's grantsActivated[] */
+function makeBlockGrantForWielder(coinCost){
+  return {
+    label: coinCost ? ('Response '+'\u2460\u2461\u2462\u2463'[coinCost-1]+'\u2299: Block') : 'Response \u2299: Block',
+    cost: coinCost ? {tap:true, coins:coinCost} : {tap:true},
+    run(gp,ctx){
+      if(!gp.responseWindow){log(gp,'Block can only be activated during an attack response window.');return;}
+      const rw=gp.responseWindow;
+      const newDef=ctx.src;
+      log(gp,CARDS[gp.inst[newDef].cid].name+' blocks the attack \u2014 attack retargets.');
+      rw.defenderUid=newDef;
+      gp.pendingAttack.defender=newDef;
+    }
+  };
+}
+
+/* Blast Scanner: stunned Fighter's activated abilities flow to the wielder */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq82od0q']||(window.CATA_ABILITIES['render-mq82od0q']={});
+  e.onWield=function(gp,ctx){
+    pendTarget(gp,{forId:ctx.pid,prompt:'Blast Scanner: stun which opposing Fighter?',
+      filter:opposingFighterFilter(ctx.pid)},(g,t)=>{
+        if(!t)return;
+        stunInstance(g,t);
+        /* Tag this weapon with the stunned Fighter's uid so the wielder picks up its abilities */
+        g.inst[ctx.src]._stunnedTarget=t;
+        log(g,'Blast Scanner stunned '+CARDS[g.inst[t].cid].name+' \u2014 wielder gains its activated abilities.');
+      });
+  };
+  /* Weapon broadcasts the stunned Fighter's activated[] to its wielder via grantsActivated */
+  e.dynamicGrantsActivated=function(gp,weaponUid){
+    const wi=gp.inst[weaponUid];if(!wi||!wi._stunnedTarget)return[];
+    const si=gp.inst[wi._stunnedTarget];if(!si||si.hp<=0||!si.stunned)return[];
+    return(CARDS[si.cid]&&CARDS[si.cid].activated||[]);
+  };
+})();
+
+/* Data Spike: enters with charge, +1 charge when wielder dies, +1 atk per charge */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq82szo4']||(window.CATA_ABILITIES['render-mq82szo4']={});
+  e.onWield=function(gp,ctx){
+    const wi=gp.inst[ctx.src];wi.counters=wi.counters||{};
+    wi.counters.charge=(wi.counters.charge||0)+1;
+    log(gp,'Data Spike enters with a charge counter ('+wi.counters.charge+' total).');
+  };
+  /* When a Fighter wielding Data Spike dies, add charge to Data Spike */
+  e.onWielderDeath=function(gp,weaponUid,wielderUid){
+    const wi=gp.inst[weaponUid];if(!wi)return;
+    wi.counters=wi.counters||{};
+    wi.counters.charge=(wi.counters.charge||0)+1;
+    log(gp,'Data Spike: wielder defeated \u2014 charge counter added ('+wi.counters.charge+' total).');
+  };
+  e.atkBonusForWielder=function(gp,wielderUid){
+    /* Find Data Spike on wielder's wielded list, sum charge counters */
+    const i=gp.inst[wielderUid];if(!i)return 0;
+    let bonus=0;
+    (i.wielded||[]).forEach(wu=>{
+      const wi=gp.inst[wu];if(!wi)return;
+      if((CARDS[wi.cid]||{}).id==='render-mq82szo4')bonus+=(wi.counters&&wi.counters.charge||0);
+    });
+    return bonus;
+  };
+})();
+
+/* Dog-Eared Passage: draw whenever wielder attacks (not 'deals damage') */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq82uuz1']||(window.CATA_ABILITIES['render-mq82uuz1']={});
+  e.onWield=function(gp,ctx){
+    const holder=gp.inst[ctx.src].wieldedBy;
+    if(holder)gainKwLevel(gp,holder,'Stealthy');
+  };
+  e.onWielderAttack=function(gp,wielderUid){
+    drawN(gp,gp.inst[wielderUid].owner,1);
+    log(gp,'Dog-Eared Passage: wielder attacks \u2014 draw a card.');
+  };
+  /* Remove the older onWielderDealtDamage so we don't double-draw */
+  e.onWielderDealtDamage=undefined;
+})();
+
+/* Face of Death: when wielder defeats a Fighter, untap the wielder */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq82yd7b']||(window.CATA_ABILITIES['render-mq82yd7b']={});
+  e.onWielderKillFighter=function(gp,wielderUid,defeatedCid){
+    const wi=gp.inst[wielderUid];if(!wi)return;
+    wi.actedCount=Math.max(0,(wi.actedCount||0)-1);
+    log(gp,'Face of Death: wielder defeats a Fighter \u2014 untapped.');
+  };
+})();
+
+/* Makeshift Shield: wielder has Armor 1 and Response ⊙: Block */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq836yg3']||(window.CATA_ABILITIES['render-mq836yg3']={});
+  /* The wielder picks up Armor via dynamic check; engine reads armor from weapon's grantsArmor too */
+  e.grantsArmor=1;
+  e.grantsActivated=[makeBlockGrantForWielder(0)]; /* free Block */
+})();
+
+/* Sword from Nowhere: +X attack equal to T/R in your discard */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq83pdq7']||(window.CATA_ABILITIES['render-mq83pdq7']={});
+  e.atkBonusForWielder=function(gp,wielderUid){
+    const pid=gp.inst[wielderUid].owner;
+    return gp.p[pid].grave.filter(u=>{const c=CARDS[gp.inst[u].cid];return c&&(c.type==='tactic'||c.type==='response');}).length;
+  };
+})();
+
+/* Swiftpack / Swiftpack 1999: weapons with Agility keyword must set grantsKeyword:'agility' to actually grant Agility */
+(function(){
+  ['render-mq83oqvm','render-mq83osng'].forEach(cid=>{
+    const e=window.CATA_ABILITIES[cid]||(window.CATA_ABILITIES[cid]={});
+    e.grantsKeyword='agility';
+  });
+  /* Swiftpack 1999 also grants Response ①⊙: Block */
+  const e=window.CATA_ABILITIES['render-mq83osng']||(window.CATA_ABILITIES['render-mq83osng']={});
+  e.grantsActivated=[makeBlockGrantForWielder(1)];
+})();
+
+/* Whiskers of the Ancient: 'this attack' → 'rest of this level'; +1 atk per faction on team */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq83v8ob']||(window.CATA_ABILITIES['render-mq83v8ob']={});
+  e.onWielderAttack=function(gp,wielderUid){
+    const wielder=gp.inst[wielderUid];if(!wielder)return;
+    const factions=['synth','mystic','shifter','survivor','apex'];
+    pendPick(gp,{forId:wielder.owner,prompt:'Whiskers: wielder becomes which faction for the rest of this level?',
+      options:factions.map(f=>({label:f.charAt(0).toUpperCase()+f.slice(1),value:f}))},
+      (g,fac)=>{
+        const w=g.inst[wielderUid];if(w){
+          w.tempFaction=fac;
+          w.tempFactionLevel=g.level;
+          log(g,CARDS[w.cid].name+' becomes '+fac+' for the rest of this level.');
+        }
+      });
+  };
+  e.atkBonusForWielder=function(gp,wielderUid){
+    const pid=gp.inst[wielderUid].owner;
+    const factions=new Set();
+    gp.p[pid].board.concat([gp.p[pid].boss]).forEach(u=>{
+      if(!u)return;const i=gp.inst[u];if(!i||i.hp<=0)return;
+      const c=CARDS[i.cid];if(!c)return;
+      const fac=i.tempFaction&&i.tempFactionLevel===gp.level?i.tempFaction:c.faction;
+      if(fac)factions.add(fac);
+    });
+    return factions.size;
+  };
+})();
+
+/* ──────── Batch 4: Apex + Survivor fighter accuracy fixes ──────── */
+
+/* EVee, The Fixer: other Survivors' Attack Costs cost ① less */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq82xys2']||(window.CATA_ABILITIES['render-mq82xys2']={});
+  e.atkCostModForAlly=function(gp,allyUid,evueUid){
+    /* If the ally is a Survivor Fighter (not EVee herself), reduce by 1 */
+    if(allyUid===evueUid)return 0;
+    const ai=gp.inst[allyUid];if(!ai)return 0;
+    const ac=CARDS[ai.cid];if(!ac)return 0;
+    if(ac.faction!=='survivor')return 0;
+    if(ac.type!=='fighter')return 0;
+    return -1;
+  };
+})();
+
+/* Hot Mike: set persistent top-revealed mode on enter (rules say "play with top revealed") */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq833kln']||(window.CATA_ABILITIES['render-mq833kln']={});
+  e.onEnter=function(gp,ctx){
+    gp.p[ctx.pid].topRevealed=true;
+    gp.p[ctx.pid].topRevealedHotMike=true;
+    log(gp,'Hot Mike: top of '+gp.p[ctx.pid].name+'\u2019s deck revealed while Hot Mike is in play.');
+    /* Fire reveal hook for the current top card */
+    const top=gp.p[ctx.pid].deck[0];
+    if(top)fireReveal(gp,ctx.pid,top);
+  };
+  e.onDeath=function(gp,ctx){
+    /* Clear if Hot Mike was the source of the reveal effect */
+    if(gp.p[ctx.pid].topRevealedHotMike){
+      gp.p[ctx.pid].topRevealed=false;
+      delete gp.p[ctx.pid].topRevealedHotMike;
+    }
+  };
+})();
+
+/* Just Elias, Protector: +1 Attack if at 3 or less Health (NOT "+1 per Survivor ally") */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq834dho']||(window.CATA_ABILITIES['render-mq834dho']={});
+  e.dynamicAtkBonus=function(gp,uid){
+    const i=gp.inst[uid];if(!i)return 0;
+    return i.hp<=3?1:0;
+  };
+})();
+
+/* Kat Five: when deals attack damage, deals that much damage to another target B/F */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq87mx41']||(window.CATA_ABILITIES['render-mq87mx41']={});
+  /* Keep the onEnter coin gain */
+  e.onEnter=function(gp,ctx){
+    const n=myFighters(gp,ctx.pid).filter(u=>(CARDS[gp.inst[u].cid]||{}).faction==='survivor'&&u!==ctx.src).length;
+    if(n>0){gp.p[ctx.pid].coins+=n;log(gp,'Kat Five: gain '+n+' \u2299.');}
+  };
+  /* Use the new attacker-side dealt-damage hook (not the weapon hook) */
+  e.onAttackerDealtDamage=function(gp,uid,ctx){
+    if(!ctx||!ctx.amount)return;
+    const dmg=ctx.amount;
+    pendTarget(gp,{forId:gp.inst[uid].owner,prompt:'Kat Five carries '+dmg+' damage to which other Boss or Fighter?',
+      filter:i=>(i.kind==='fighter'||i.kind==='boss')&&i.uid!==uid&&i.uid!==ctx.defender},
+      (g,t)=>{if(t)dealDamage(g,t,dmg);});
+  };
+  /* Remove the misplaced onWielderDealtDamage (Kat isn't a weapon) */
+  e.onWielderDealtDamage=undefined;
+})();
+
+/* Mister Purple: label as Response */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq839hev']||(window.CATA_ABILITIES['render-mq839hev']={});
+  e.activated=[{label:'Response \u2461\u2299: Team heals 1',cost:{tap:true,coins:2},run(gp,ctx){
+    eachAlly(gp,ctx.pid,u=>{const i=gp.inst[u];if(i&&i.hp<i.maxHp)healInst(gp,u,1);});
+  }}];
+})();
+
+/* Sanyang, Unerring: variable attack — spend tokens (1-4) when attacking, that becomes her attack */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq83iod9']||(window.CATA_ABILITIES['render-mq83iod9']={});
+  e.dynamicAtk=function(gp,uid){
+    const i=gp.inst[uid];if(!i)return 0;
+    return i._sanyangAtkSet||0;
+  };
+  /* Custom attack-prep activated: spend N coins (1-4) to set her attack for next attack */
+  e.activated=[{label:'\u2460-\u2463\u2299: Prepare attack (set ATK)',cost:{},run(gp,ctx){
+    pendPick(gp,{forId:ctx.pid,prompt:'Sanyang: spend how many tokens to attack? (Becomes her Attack this attack)',
+      options:[
+        {label:'\u2460 \u2299 — 1 Attack',value:'1'},
+        {label:'\u2461 \u2299 — 2 Attack',value:'2'},
+        {label:'\u2462 \u2299 — 3 Attack',value:'3'},
+        {label:'\u2463 \u2299 — 4 Attack',value:'4'},
+        {label:'Cancel',value:''}
+      ]},(g,v)=>{
+        if(!v)return;
+        const n=parseInt(v,10);
+        if(g.p[ctx.pid].coins<n){log(g,'Not enough \u2299 to spend '+n+'.');return;}
+        g.p[ctx.pid].coins-=n;
+        g.inst[ctx.src]._sanyangAtkSet=n;
+        log(g,'Sanyang: prepared to attack with '+n+' Attack (spent '+n+' \u2299). Click ATK to commit.');
+      });
+  }}];
+  /* Clear after attack */
+  e.onAttack=function(gp,ctx){
+    const i=gp.inst[ctx.src];if(i)i._sanyangAtkSet=0;
+  };
+  /* Keep the onEnter coin gain */
+  e.onEnter=function(gp,ctx){gp.p[ctx.pid].coins+=2;log(gp,'Sanyang: gain \u2461.');};
+})();
+
+/* Trouble, Forerunner: ALSO increase ability costs (not just atk costs) of OTHER B/F */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq83senr']||(window.CATA_ABILITIES['render-mq83senr']={});
+  e.abilityCostModForAlly=function(gp,allyUid,troubleUid){
+    return allyUid===troubleUid?0:1;
+  };
+  /* onAttackKill already wired */
+})();
+
+/* Turner, Straphanger: restrict +1 counter to ALLY Survivor Fighter (not opponent's) */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq83t4ak']||(window.CATA_ABILITIES['render-mq83t4ak']={});
+  e.onEnter=function(gp,ctx){
+    pendTarget(gp,{forId:ctx.pid,prompt:'Turner: +1 Attack counter on which Survivor Fighter on your team?',
+      filter:i=>i.kind==='fighter'&&(CARDS[i.cid]||{}).faction==='survivor'&&i.owner===ctx.pid},
+      (g,t)=>{if(t)addCounter(g,t,'atk',1);});
+  };
+})();
+
+/* ──────── Batch 5: Mystic fighter accuracy fixes ──────── */
+
+/* Axel, Deathracer: Agility only while Phantasmal (not always) */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq82n695']||(window.CATA_ABILITIES['render-mq82n695']={});
+  e.dynamicKeyword=function(gp,uid,kw){
+    if(kw!=='Agility')return false;
+    const i=gp.inst[uid];if(!i)return false;
+    return !!i.phantasmal;
+  };
+  /* Override activated: don't redundantly call gainKwLevel (dynamicKeyword handles it now) */
+  e.activated=[{label:'\u2460: Phantasmal',cost:{coins:1},run(gp,ctx){
+    const i=gp.inst[ctx.src];
+    if(i.phantasmal){log(gp,'Axel is already Phantasmal.');return;}
+    i.phantasmal=true;
+    i.counters=i.counters||{};i.counters.atk=(i.counters.atk||0)+1;
+    log(gp,'Axel becomes Phantasmal (+1 Attack counter, gains Agility while Phantasmal).');
+  }}];
+})();
+
+/* DeeLux, Brutal Savant: grant Agility/Determination/Enforcer (not Stealthy!) */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq82tt5b']||(window.CATA_ABILITIES['render-mq82tt5b']={});
+  e.activated=[{label:'\u2461\u2299: +1 atk & grant keyword',cost:{tap:true,coins:2},run(gp,ctx){
+    pendTarget(gp,{forId:ctx.pid,prompt:'DeeLux: +1 atk on which Fighter on your team?',
+      filter:i=>i.kind==='fighter'&&i.owner===ctx.pid},(g,t)=>{
+      if(!t)return;addCounter(g,t,'atk',1);
+      pendPick(g,{forId:ctx.pid,prompt:'DeeLux: grant which keyword this level?',
+        options:[{label:'Agility (tap twice/level)',value:'Agility'},
+                 {label:'Determination (1 HP + counter on death)',value:'Determination'},
+                 {label:'Enforcer (must be attacked first)',value:'Enforcer'}]},
+        (g2,kw)=>{if(kw)gainKwLevel(g2,t,kw);});
+    });
+  }}];
+})();
+
+/* Ebb, Balancer of Scales: +1 atk while any B/F on your team has a counter */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq82vp7e']||(window.CATA_ABILITIES['render-mq82vp7e']={});
+  e.dynamicAtkBonus=function(gp,uid){
+    const i=gp.inst[uid];if(!i)return 0;
+    const pid=i.owner;
+    const has=gp.p[pid].board.concat([gp.p[pid].boss]).some(u=>{
+      if(!u)return false;const ii=gp.inst[u];if(!ii)return false;
+      const c=ii.counters||{};return Object.keys(c).some(k=>c[k]>0);
+    });
+    return has?1:0;
+  };
+  /* Keep the onEnter prompt — already correct */
+})();
+
+/* Flecks, Accelerator: filter is BOSS OR FIGHTER for the activated (not just Fighter) */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq82zd5k']||(window.CATA_ABILITIES['render-mq82zd5k']={});
+  e.activated=[{label:'\u2460\u2299: B/F Atk Cost \u2192 \u2460 this level',cost:{tap:true,coins:1},run(gp,ctx){
+    pendTarget(gp,{forId:ctx.pid,prompt:'Flecks: target Boss or Fighter\u2014Atk Cost becomes \u2460 this level',
+      filter:i=>i.kind==='fighter'||i.kind==='boss'},(g,t)=>{
+        if(t){g.inst[t]._costOverride=1;log(g,CARDS[g.inst[t].cid].name+' Atk Cost = \u2460 this level.');}
+      });
+  }}];
+  /* Keep onEnter as-is — text says "target Fighter" for the enter trigger */
+})();
+
+/* Knap, Forgemaster: label needs "Response" prefix so the response window detects it */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq834zdf']||(window.CATA_ABILITIES['render-mq834zdf']={});
+  e.activated=[{label:'Response \u2461\u2299: Unwield a Weapon',cost:{tap:true,coins:2},run(gp,ctx){
+    pendTarget(gp,{forId:ctx.pid,prompt:'Knap: which Weapon to unwield?',
+      filter:i=>(CARDS[i.cid]||{}).type==='weapon'&&gp.inst[i.uid].wieldedBy},(g,w)=>{
+        if(!w)return;
+        const wInst=g.inst[w];const owner=wInst.owner;
+        unwieldWeapon(g,w);
+        log(g,CARDS[wInst.cid].name+' unwielded.');
+        if(owner===ctx.pid)drawN(g,ctx.pid,1);
+      });
+  }}];
+})();
+
+/* Dette, Quickener: trigger on becoming Phantasmal (will work for self-activated AND any future external Phantasmal source) */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq82ueab']||(window.CATA_ABILITIES['render-mq82ueab']={});
+  e.activated=[{label:'\u2460: Phantasmal (+ heal trigger)',cost:{coins:1},run(gp,ctx){
+    const i=gp.inst[ctx.src];
+    if(i.phantasmal){log(gp,'Dette is already Phantasmal.');return;}
+    i.phantasmal=true;
+    i.counters=i.counters||{};i.counters.atk=(i.counters.atk||0)+1;
+    log(gp,'Dette becomes Phantasmal (+1 Attack counter).');
+    /* Fire the "becomes Phantasmal" trigger */
+    if(e.onBecomePhantasmal)e.onBecomePhantasmal(gp,ctx);
+  }}];
+  e.onBecomePhantasmal=function(gp,ctx){
+    pendTarget(gp,{forId:ctx.pid,prompt:'Dette becomes Phantasmal: which ally Fighter gains 2 Health?',
+      filter:i=>i.kind==='fighter'&&i.owner===ctx.pid},
+      (g,t)=>{if(t)gainHealth(g,t,2);});
+  };
+})();
+
+/* Sage, Fair Fighter: use rollDieVisible for the d6 roll so player sees it */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq83i27x']||(window.CATA_ABILITIES['render-mq83i27x']={});
+  e.preAttack=function(gp,ctx){
+    /* Per text: "When Sage attacks, roll a six-sided die. If you roll 4 or higher,
+       Sage gets +1 Attack this level and roll again." Use animated dice. */
+    function rollOnce(){
+      rollDieVisible(6,'Sage rolls d6',(r)=>{
+        log(gp,'Sage rolls a '+r+'.');
+        if(r>=4){
+          setTempAtk(gp,ctx.src,1);
+          log(gp,'Sage: +1 Attack this level. Rolling again.');
+          rollOnce();
+        } else {
+          /* End of chain → proceed with the attack */
+          finishAttackDamage(gp,ctx);
+        }
+      });
+    }
+    rollOnce();
+  };
+  e.onAttack=undefined; /* Switched to preAttack so the +1 atk applies before damage */
+})();
+
+/* ──────── Batch 6: Shifter fighter accuracy fixes ──────── */
+
+/* Clatter: remove duplicate onDamaged that referenced wrong sourceUid; onAttacked already wired */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq82rspr']||(window.CATA_ABILITIES['render-mq82rspr']={});
+  /* onAttacked already wired in Batch 1: reflects 1 dmg to attacker. Just nuke onDamaged here */
+  e.onDamaged=undefined;
+})();
+
+/* Gordo, Collector: trigger only if YOUR Fighter died this level (not any player's) */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq832cs4']||(window.CATA_ABILITIES['render-mq832cs4']={});
+  e.onEnter=function(gp,ctx){
+    const myDeaths=(gp.fighterDeathsThisLevel||{})[ctx.pid]||0;
+    if(myDeaths<=0){log(gp,'Gordo: no Fighter on your team died this level. No damage.');return;}
+    pendTarget(gp,{forId:ctx.pid,prompt:'Gordo: deal 2 damage to whom?',
+      filter:i=>i.kind==='fighter'||i.kind==='boss'},
+      (g,t)=>{if(t)dealDamage(g,t,2);});
+  };
+})();
+
+/* Joe Strummage: each player MUST discard (forced, not optional) */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq8347x5']||(window.CATA_ABILITIES['render-mq8347x5']={});
+  e.onEnter=function(gp,ctx){
+    /* Queue forced discards for every player who has cards */
+    const targets=gp.order.filter(pid=>!gp.p[pid].defeated&&gp.p[pid].hand.length);
+    function step(i){
+      if(i>=targets.length)return;
+      const pid=targets[i];
+      pendDiscardForced(gp,{pid},'Joe Strummage: '+gp.p[pid].name+', discard a card.',(g)=>{step.call(null,i+1);});
+    }
+    step(0);
+  };
+})();
+
+/* Kupp Lightpaws: opponent's discard is forced */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq835m7t']||(window.CATA_ABILITIES['render-mq835m7t']={});
+  e.onEnter=function(gp,ctx){
+    const opps=gp.order.filter(p=>p!==ctx.pid&&!gp.p[p].defeated);
+    if(!opps.length)return;
+    if(opps.length===1){
+      pendDiscardForced(gp,{pid:opps[0]},'Kupp Lightpaws: '+gp.p[opps[0]].name+', discard a card.');
+    } else {
+      pendPick(gp,{forId:ctx.pid,prompt:'Kupp Lightpaws: which opponent must discard?',
+        options:opps.map(p=>({label:gp.p[p].name,value:p}))},
+        (g,pid)=>{if(pid)pendDiscardForced(g,{pid},gp.p[pid].name+': discard a card (Kupp Lightpaws).');});
+    }
+  };
+})();
+
+/* Muck, Relentless Foe: Atk Cost = current HP (in addition to Atk = HP) */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq83apbe']||(window.CATA_ABILITIES['render-mq83apbe']={});
+  e.dynamicAtkCost=function(gp,uid){
+    const i=gp.inst[uid];return i?(i.hp||0):0;
+  };
+  /* dynamicAtk and onAttackKill already wired correctly */
+})();
+
+/* Mumbly Peg: forced discard */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq83arej']||(window.CATA_ABILITIES['render-mq83arej']={});
+  e.onEnter=function(gp,ctx){
+    const opps=gp.order.filter(pid=>pid!==ctx.pid&&!gp.p[pid].defeated);
+    if(!opps.length)return;
+    if(opps.length===1){
+      pendDiscardForced(gp,{pid:opps[0]},'Mumbly Peg: '+gp.p[opps[0]].name+', discard a card.');
+    } else {
+      pendPick(gp,{forId:ctx.pid,prompt:'Mumbly Peg: which opponent must discard?',
+        options:opps.map(p=>({label:gp.p[p].name,value:p}))},
+        (g,pid)=>{if(pid)pendDiscardForced(g,{pid},gp.p[pid].name+': discard a card.');});
+    }
+  };
+})();
+
+/* Pilskin, Slithering Striker: carry damage to another B/F when deals attack damage */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq83e6ta']||(window.CATA_ABILITIES['render-mq83e6ta']={});
+  /* Keep the onEnter double-stun */
+  e.onAttackerDealtDamage=function(gp,uid,ctx){
+    if(!ctx||!ctx.amount)return;
+    const dmg=ctx.amount;
+    pendTarget(gp,{forId:gp.inst[uid].owner,prompt:'Pilskin carries '+dmg+' damage to which other Boss or Fighter?',
+      filter:i=>(i.kind==='fighter'||i.kind==='boss')&&i.uid!==uid&&i.uid!==ctx.defender},
+      (g,t)=>{if(t)dealDamage(g,t,dmg);});
+  };
+})();
+
+/* Ryle, Unchecked: rewire — onDamaged (engine ✓) + onAttackerDealtDamage (self-damage 2) */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq83i0g1']||(window.CATA_ABILITIES['render-mq83i0g1']={});
+  e.onDamaged=function(gp,ctx){
+    /* engine passes {pid, src, amount}. src is Ryle's uid */
+    if(!ctx||!ctx.amount)return;
+    pendTarget(gp,{forId:gp.inst[ctx.src].owner,prompt:'Ryle: deal '+ctx.amount+' damage to whom?',
+      filter:i=>(i.kind==='fighter'||i.kind==='boss')&&i.uid!==ctx.src},
+      (g,t)=>{if(t)dealDamage(g,t,ctx.amount);});
+  };
+  e.onAttackerDealtDamage=function(gp,uid,ctx){
+    /* "When Ryle deals attack damage, deal 2 damage to Ryle" */
+    if(ctx&&ctx.amount>0){
+      log(gp,'Ryle: deals attack damage \u2014 takes 2 damage to self.');
+      dealDamage(gp,uid,2);
+    }
+  };
+  /* Remove the wrong weapon hook */
+  e.onWielderDealtDamage=undefined;
+})();
+
+/* Vigo the Sharp: +1 Attack per player who discarded a card this level */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq83unlz']||(window.CATA_ABILITIES['render-mq83unlz']={});
+  e.dynamicAtkBonus=function(gp,uid){
+    if(!gp.discardedPlayersThisLevel)return 0;
+    return Object.keys(gp.discardedPlayersThisLevel).filter(p=>gp.discardedPlayersThisLevel[p]).length;
+  };
+})();
+
+/* ──────── Batch 7: Synth fighter accuracy fixes ──────── */
+
+/* Ahna, Demodulator: switch to onAttacked (knows attacker) + persistent stun across one level */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq82mt2o']||(window.CATA_ABILITIES['render-mq82mt2o']={});
+  /* The text: "Bosses or Fighters that deal attack damage to Ahna become stunned.
+     They do not unstun the following level." So we fire AFTER damage was dealt (not just attack declared).
+     The engine fires onAttacked BEFORE damage and onDamaged AFTER. Use onDamaged with the resp window context. */
+  e.onDamaged=function(gp,ctx){
+    /* engine context: {pid, src, amount}. src is Ahna's uid. We need the attacker.
+       Source of damage isn't directly passed — but during finishAttackDamage, gp.responseWindow
+       still has the attacker uid. After window closes, this is gone. Use a fallback: gp.pendingAttack. */
+    const atkUid=(gp.responseWindow&&gp.responseWindow.attackerUid)||(gp.pendingAttack&&gp.pendingAttack.attacker);
+    if(!atkUid||!gp.inst[atkUid])return;
+    const ai=gp.inst[atkUid];
+    if(ai.kind!=='fighter'&&ai.kind!=='boss')return;
+    stunInstance(gp,atkUid);
+    ai._stunPersist=gp.level+1; /* survives the NEXT level reset */
+    log(gp,'Ahna: '+CARDS[ai.cid].name+' is stunned and stays stunned next level.');
+  };
+  /* Keep activated ② Stun Fighter — already correct */
+})();
+
+/* Father, Annihilator: "wields weapons for no cost" — apply via a special cost modifier */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq82yhl3']||(window.CATA_ABILITIES['render-mq82yhl3']={});
+  e.wieldCostMod=function(gp,fatherUid){return -999;}; /* signal: any wield is free for Father */
+  /* Already wired the Response ② Destroy ability in earlier batch */
+})();
+
+/* Fishhooks: vanilla Enforcer ONLY — the prior onEnter incorrectly buffed all opposing Fighters! */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq82yuv1']||(window.CATA_ABILITIES['render-mq82yuv1']={});
+  e.onEnter=undefined;
+  /* Enforcer keyword auto-detected from text; nothing else needed */
+})();
+
+/* Mahna, Soft Speaker: first enhancement (Fortify, counter, OR wielded weapon) triggers draw */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq836hy5']||(window.CATA_ABILITIES['render-mq836hy5']={});
+  function triggerIfFirst(gp,pid){
+    gp.p[pid].board.forEach(u=>{
+      const i=gp.inst[u];if(!i||i.cid!=='render-mq836hy5')return;
+      if(i._mahnaTriggered)return;
+      const enhanced=(i.counters&&i.counters.atk>0)||(i.wielded&&i.wielded.length)||(i.maxHp>(CARDS[i.cid]||{}).hp);
+      if(enhanced){
+        i._mahnaTriggered=true;
+        drawN(gp,pid,1);
+        log(gp,'Mahna: first enhancement \u2192 draw a card.');
+      }
+    });
+  }
+  e.onCounterPlaced=function(gp,pid){triggerIfFirst(gp,pid);};
+  e.onAnyWeaponWielded=function(gp,pid){triggerIfFirst(gp,pid);};
+  e.onAnyFortify=function(gp,pid){triggerIfFirst(gp,pid);};
+})();
+
+/* Pia, Laser Focused: destroy an *enhancement*, not the whole card. Pick from counter/weapon/fortification. */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq83dkku']||(window.CATA_ABILITIES['render-mq83dkku']={});
+  e.onEnter=function(gp,ctx){
+    /* Build list of enhancements owned by Pia's owner */
+    const enhancements=[];
+    gp.p[ctx.pid].board.concat([gp.p[ctx.pid].boss]).forEach(u=>{
+      if(!u)return;const i=gp.inst[u];if(!i)return;
+      const c=CARDS[i.cid];if(!c)return;
+      if(i.counters&&i.counters.atk>0){
+        enhancements.push({label:'Remove +1 atk counter from '+c.name,value:'ctr:'+u});
+      }
+      (i.wielded||[]).forEach(wu=>{
+        const wc=CARDS[(gp.inst[wu]||{}).cid];if(wc)enhancements.push({label:'Destroy '+wc.name+' (wielded to '+c.name+')',value:'wpn:'+wu});
+      });
+      /* Fortifications: search for any inst whose fortifiedUnder=u */
+      Object.keys(gp.inst).forEach(fu=>{
+        const fi=gp.inst[fu];
+        if(fi&&fi.fortifiedUnder===u&&fi.owner===ctx.pid){
+          const fc=CARDS[fi.cid];if(fc)enhancements.push({label:'Remove Fortified '+fc.name+' from under '+c.name,value:'frt:'+fu});
+        }
+      });
+    });
+    if(!enhancements.length){log(gp,'Pia: no enhancements to destroy. No draw.');return;}
+    pendPick(gp,{forId:ctx.pid,prompt:'Pia: destroy an enhancement to draw a card?',
+      options:enhancements.concat([{label:'Skip',value:''}])},
+      (g,pick)=>{
+        if(!pick)return;
+        const [kind,uid]=pick.split(':');
+        if(kind==='ctr'){
+          const i=g.inst[uid];if(i&&i.counters&&i.counters.atk>0){i.counters.atk-=1;log(g,'Pia: removed +1 Attack counter from '+CARDS[i.cid].name+'.');}
+        } else if(kind==='wpn'){
+          const wi=g.inst[uid];if(wi){if(wi.wieldedBy){const h=g.inst[wi.wieldedBy];if(h)h.wielded=(h.wielded||[]).filter(x=>x!==uid);}
+            destroyInstance(g,uid,{skipFortify:true});log(g,'Pia: destroyed wielded Weapon.');}
+        } else if(kind==='frt'){
+          const fi=g.inst[uid];if(fi){fi.fortifiedUnder=null;g.p[ctx.pid].grave.push(uid);log(g,'Pia: '+CARDS[fi.cid].name+' removed from Fortification to discard.');}
+        }
+        drawN(g,ctx.pid,1);
+      });
+  };
+})();
+
+/* ──────── Batch 8: Tactic accuracy fixes ──────── */
+
+/* Aha!: "Discard a card. Draw two cards." — forced discard, not optional */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq82m6em']||(window.CATA_ABILITIES['render-mq82m6em']={});
+  e.run=function(gp,ctx){
+    if(!gp.p[ctx.pid].hand.length){
+      /* No cards to discard — still draw 2 per "after discard" reading. Most reasonable interpretation. */
+      drawN(gp,ctx.pid,2);log(gp,'Aha!: no cards to discard, drawing 2.');
+      return;
+    }
+    pendDiscardForced(gp,ctx,'Aha!: discard a card.',(g)=>{drawN(g,ctx.pid,2);});
+  };
+})();
+
+/* Decisive Victory: only count boss if alive */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq82tevl']||(window.CATA_ABILITIES['render-mq82tevl']={});
+  e.run=function(gp,ctx){
+    const bossUid=gp.p[ctx.pid].boss;
+    const bossAlive=bossUid&&gp.inst[bossUid]&&gp.inst[bossUid].hp>0;
+    const n=myFighters(gp,ctx.pid).length+(bossAlive?1:0);
+    pendTarget(gp,{forId:ctx.pid,prompt:'Decisive Victory: deal '+n+' damage to which Fighter?',
+      filter:fighterTargetFilter()},(g,t)=>{if(t)dealDamage(g,t,n);});
+  };
+})();
+
+/* Fluorescent Fall: enforce "Fighters with those names can't be replayed this level by those players" */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq83035u']||(window.CATA_ABILITIES['render-mq83035u']={});
+  e.run=function(gp,ctx){
+    pendTarget(gp,{forId:ctx.pid,prompt:'Fluorescent Fall: return which ally Fighter to hand?',
+      filter:i=>i.kind==='fighter'&&i.owner===ctx.pid},(g,t1)=>{
+        if(!t1){log(g,'Fluorescent Fall: no ally Fighter selected.');return;}
+        const c1=CARDS[g.inst[t1].cid];const owner1=g.inst[t1].owner;
+        moveZone(g,owner1,t1,'board','hand');
+        /* Stamp the level-block for this name on this player */
+        g.p[owner1]._cantReplayThisLevel=g.p[owner1]._cantReplayThisLevel||{};
+        g.p[owner1]._cantReplayThisLevel[c1.name]=g.level;
+        log(g,c1.name+' returned to hand; cannot be replayed this level.');
+        pendTarget(g,{forId:ctx.pid,prompt:'Return which opposing Fighter to its owner\u2019s hand?',
+          filter:i=>i.kind==='fighter'&&i.owner!==ctx.pid},(g2,t2)=>{
+            if(!t2)return;
+            const c2=CARDS[g2.inst[t2].cid];const owner2=g2.inst[t2].owner;
+            moveZone(g2,owner2,t2,'board','hand');
+            g2.p[owner2]._cantReplayThisLevel=g2.p[owner2]._cantReplayThisLevel||{};
+            g2.p[owner2]._cantReplayThisLevel[c2.name]=g2.level;
+            log(g2,c2.name+' returned to '+g2.p[owner2].name+'\u2019s hand; cannot be replayed this level.');
+          });
+      });
+  };
+})();
+
+/* Malefice: deal damage equal to weapon's LEVEL (not atkMod) */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq8374uc']||(window.CATA_ABILITIES['render-mq8374uc']={});
+  e.run=function(gp,ctx){
+    pendTarget(gp,{forId:ctx.pid,prompt:'Malefice: destroy which Weapon?',
+      filter:i=>(CARDS[i.cid]||{}).type==='weapon'},(g,w)=>{
+        if(!w)return;
+        const wInst=g.inst[w];const wc=CARDS[wInst.cid];
+        const dmg=wc.level||0;
+        const wielder=wInst.wieldedBy;
+        destroyInstance(g,w,{skipFortify:true});
+        if(wielder&&g.inst[wielder]&&dmg>0){
+          log(g,'Malefice: '+CARDS[g.inst[wielder].cid].name+' takes '+dmg+' damage (weapon level).');
+          dealDamage(g,wielder,dmg);
+        }
+      });
+  };
+})();
+
+/* Mimeoscoped: create a token copy of target Fighter, dies end of level, name "Mimeoscope",
+   if Synth gain Agility. Stats copied from source (atk, hp, atkCost, faction, level, sub, keywords, activated). */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq838ccz']||(window.CATA_ABILITIES['render-mq838ccz']={});
+  e.run=function(gp,ctx){
+    pendTarget(gp,{forId:ctx.pid,prompt:'Mimeoscoped: copy which Fighter on your team?',
+      filter:i=>i.kind==='fighter'&&i.owner===ctx.pid},(g,t)=>{
+        if(!t)return;
+        const src=g.inst[t];const sc=CARDS[src.cid];if(!sc)return;
+        /* Build a synthetic CARDS entry on the fly for this token */
+        const tokenCid='_mimeo_'+t+'_'+g.level;
+        CARDS[tokenCid]={
+          id:tokenCid,kind:'token',type:'fighter',
+          name:'Mimeoscope',faction:sc.faction,sub:sc.sub,level:sc.level,
+          hp:sc.hp,atk:sc.atk,atkCost:sc.atkCost,cost:0,
+          keywords:(sc.keywords||[]).slice(),
+          activated:(sc.activated||[]).slice(),
+          dynamicAtk:sc.dynamicAtk,dynamicAtkBonus:sc.dynamicAtkBonus,
+          attackerMod:sc.attackerMod,defenderMod:sc.defenderMod,
+          onEnter:undefined,/* don't re-fire onEnter on token */
+          diesEndOfLevel:true,
+          img:sc.img,
+          text:'(Token copy of '+sc.name+', dies at end of level.)'
+        };
+        /* Synth gets Agility */
+        if(sc.faction==='synth'&&!CARDS[tokenCid].keywords.includes('Agility')){
+          CARDS[tokenCid].keywords.push('Agility');
+        }
+        /* Create the instance */
+        const tokUid=newInstance(g,tokenCid,ctx.pid);
+        g.p[ctx.pid].board.push(tokUid);resetInstance(g,tokUid);
+        log(g,'Mimeoscoped creates token copy of '+sc.name+'.');
+      });
+  };
+})();
+
+/* Power Play: check BOTH targets for Mystic (the text says "If you dealt damage to a Mystic this way") */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq83esvh']||(window.CATA_ABILITIES['render-mq83esvh']={});
+  e.run=function(gp,ctx){
+    pendTarget(gp,{forId:ctx.pid,prompt:'Power Play: 1 damage to which ally B/F?',
+      filter:i=>(i.kind==='fighter'||i.kind==='boss')&&i.owner===ctx.pid},(g,t1)=>{
+        let mysticHit=false;
+        if(t1){
+          const fac1=(CARDS[g.inst[t1].cid]||{}).faction;
+          dealDamage(g,t1,1);
+          if(fac1==='mystic')mysticHit=true;
+        }
+        pendTarget(g,{forId:ctx.pid,prompt:'Power Play: 3 damage to which opposing B/F?',
+          filter:i=>(i.kind==='fighter'||i.kind==='boss')&&i.owner!==ctx.pid},(g2,t2)=>{
+            if(t2){
+              const fac2=(CARDS[g2.inst[t2].cid]||{}).faction;
+              dealDamage(g2,t2,3);
+              if(fac2==='mystic')mysticHit=true;
+            }
+            if(mysticHit){drawN(g2,ctx.pid,1);log(g2,'Power Play: damaged a Mystic \u2014 draw a card.');}
+          });
+      });
+  };
+})();
+
+/* Steel Swipe: only count boss if alive */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq83o77a']||(window.CATA_ABILITIES['render-mq83o77a']={});
+  e.run=function(gp,ctx){
+    const bossUid=gp.p[ctx.pid].boss;
+    const bossAlive=bossUid&&gp.inst[bossUid]&&gp.inst[bossUid].hp>0;
+    const bossFac=bossAlive?(CARDS[gp.inst[bossUid].cid]||{}).faction:null;
+    const n=bossFac==='shifter'?3:2;
+    pendTarget(gp,{forId:ctx.pid,prompt:'Steel Swipe: deal '+n+' damage to whom?',
+      filter:i=>i.kind==='fighter'||i.kind==='boss'},(g,t)=>{if(t)dealDamage(g,t,n);});
+  };
+})();
+
+/* ──────── Batch 9 (final): Response card accuracy fixes ──────── */
+
+/* Don't Bury Me...: counter removal only applies if target is a Fighter (per "that Fighter" wording) */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq82v2l0']||(window.CATA_ABILITIES['render-mq82v2l0']={});
+  e.run=function(gp,ctx){
+    pendTarget(gp,{forId:ctx.pid,prompt:'Don\u2019t Bury Me: heal 3 to which Boss or Fighter?',
+      filter:i=>i.kind==='fighter'||i.kind==='boss'},(g,t)=>{
+        if(!t)return;
+        healInst(g,t,3);
+        /* "Remove all -1 Attack counters from that Fighter" — only if target is a Fighter */
+        const ti=g.inst[t];
+        if(ti.kind==='fighter'&&ti.counters&&ti.counters.atk<0){
+          const removed=-ti.counters.atk;
+          ti.counters.atk=0;
+          drawN(g,ctx.pid,1);
+          log(g,'Don\u2019t Bury Me: removed '+removed+' -1 Attack counter(s) from '+CARDS[ti.cid].name+' \u2014 draw a card.');
+        }
+      });
+  };
+})();
+
+/* Mystery Meat: target gains Agility this level; if Survivor, also reduce Atk Cost by ① this level */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq83c0mv']||(window.CATA_ABILITIES['render-mq83c0mv']={});
+  e.run=function(gp,ctx){
+    pendTarget(gp,{forId:ctx.pid,prompt:'Mystery Meat: Agility this level to whom?',
+      filter:i=>i.kind==='fighter'||i.kind==='boss'},(g,t)=>{
+        if(!t)return;
+        gainKwLevel(g,t,'Agility');
+        /* If Survivor: reduce Atk Cost by ① this level (use _costOverride with current cost - 1) */
+        const tc=CARDS[g.inst[t].cid];
+        if(tc&&tc.faction==='survivor'){
+          const baseCost=tc.atkCost||0;
+          const ti=g.inst[t];
+          ti._costOverride=Math.max(0,baseCost-1);
+          log(g,'Mystery Meat: '+tc.name+' is Survivor \u2014 Atk Cost reduced by \u2460 this level.');
+        }
+      });
+  };
+})();
+
+/* Signal Jam: change target of a Tactic or Response card that has only one target */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq83kyb0']||(window.CATA_ABILITIES['render-mq83kyb0']={});
+  e.run=function(gp,ctx){
+    /* The card redirects a pending single-target effect that's currently mid-resolution.
+       Look for a pending `target` prompt; if there's one and it's of kind 'target', re-prompt for a new target. */
+    if(!gp.pending||gp.pending.kind!=='target'){
+      log(gp,'Signal Jam: nothing currently waiting for a single target. (Play this in response to a single-target spell.)');
+      return;
+    }
+    /* Re-prompt the same selection but on this player's choice. The previous filter is preserved. */
+    log(gp,'Signal Jam: redirecting target of pending effect.');
+    /* Save the old callback */
+    const oldCb=S.pendingCb;
+    const oldPrompt=gp.pending.prompt;
+    gp.pending={kind:'target',forId:ctx.pid,prompt:'Signal Jam: choose NEW target ('+oldPrompt+')',valid:gp.pending.valid};
+    /* The callback signature is the same; the redirect just changes who picks */
+    S.pendingCb=oldCb;
   };
 })();
