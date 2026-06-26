@@ -2817,3 +2817,54 @@ function makeBlockGrantForWielder(coinCost){
     S.pendingCb=oldCb;
   };
 })();
+
+/* ──────── Faction-colored stun lightning: pass source faction to stunInstance ──────── */
+(function(){
+  /* Blast Scanner (synth weapon) — stun colored synth-orange */
+  const e1=window.CATA_ABILITIES['render-mq82od0q']||(window.CATA_ABILITIES['render-mq82od0q']={});
+  e1.onWield=function(gp,ctx){
+    pendTarget(gp,{forId:ctx.pid,prompt:'Blast Scanner: stun which opposing Fighter?',
+      filter:opposingFighterFilter(ctx.pid)},(g,t)=>{
+        if(!t)return;
+        stunInstance(g,t,'synth');
+        g.inst[ctx.src]._stunnedTarget=t;
+        log(g,'Blast Scanner stunned '+CARDS[g.inst[t].cid].name+'.');
+      });
+  };
+
+  /* Ahna, Demodulator (synth) — stuns are synth-orange */
+  const e2=window.CATA_ABILITIES['render-mq82mt2o']||(window.CATA_ABILITIES['render-mq82mt2o']={});
+  e2.onDamaged=function(gp,ctx){
+    const atkUid=(gp.responseWindow&&gp.responseWindow.attackerUid)||(gp.pendingAttack&&gp.pendingAttack.attacker);
+    if(!atkUid||!gp.inst[atkUid])return;
+    const ai=gp.inst[atkUid];
+    if(ai.kind!=='fighter'&&ai.kind!=='boss')return;
+    stunInstance(gp,atkUid,'synth');
+    ai._stunPersist=gp.level+1;
+    log(gp,'Ahna: '+CARDS[ai.cid].name+' is stunned and stays stunned next level.');
+  };
+  e2.activated=[{label:'\u2461\u2299: Stun target Fighter',cost:{tap:true,coins:2},run(gp,ctx){
+    pendTarget(gp,{forId:ctx.pid,prompt:'Ahna: stun which Fighter?',filter:fighterTargetFilter()},
+      (g,t)=>{if(t)stunInstance(g,t,'synth');});
+  }}];
+
+  /* Orson, Quickstinger (shifter) — stuns are shifter-blue */
+  const e3=window.CATA_ABILITIES['render-mq83d04m']||(window.CATA_ABILITIES['render-mq83d04m']={});
+  e3.onEnter=function(gp,ctx){
+    pendTarget(gp,{forId:ctx.pid,prompt:'Orson: stun which Fighter?',filter:fighterTargetFilter()},
+      (g,t)=>{if(t)stunInstance(g,t,'shifter');});
+  };
+
+  /* Pilskin, Slithering Striker (shifter) — stuns are shifter-blue */
+  const e4=window.CATA_ABILITIES['render-mq83e6ta']||(window.CATA_ABILITIES['render-mq83e6ta']={});
+  const prevPilskin=e4.onEnter;
+  e4.onEnter=function(gp,ctx){
+    pendTarget(gp,{forId:ctx.pid,prompt:'Pilskin: stun which Fighter? (1 of up to 2)',filter:fighterTargetFilter()},(g,t1)=>{
+      if(t1){
+        stunInstance(g,t1,'shifter');
+        pendTarget(g,{forId:ctx.pid,prompt:'Pilskin: stun a different Fighter? (skip ok)',filter:i=>i.kind==='fighter'&&i.uid!==t1},
+          (g2,t2)=>{if(t2)stunInstance(g2,t2,'shifter');});
+      }
+    });
+  };
+})();
