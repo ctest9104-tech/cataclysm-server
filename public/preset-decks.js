@@ -1,4 +1,4 @@
-/* Cataclysm Arcade — Pre-built deck library (40 cards per official rules R1.0). */
+/* Cataclysm Arcade — Pre built deck library (40 cards per official rules. */
 window.CATA_PRESET_DECKS = [
   {
     "id": "kiritos-choice",
