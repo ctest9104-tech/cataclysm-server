@@ -490,13 +490,19 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
 .fx-attack-beam {
   position: fixed; z-index: 1400; pointer-events: none;
   height: 10px; transform-origin: 0 50%;
+  --fx-c1: #ff5018;
+  --fx-c2: #ff9c4a;
+  --fx-c3: #ffd49a;
   background: linear-gradient(90deg,
-    rgba(255,220,140,0) 0%,
-    rgba(255,200,60,0.95) 15%,
+    rgba(255,255,255,0) 0%,
+    var(--fx-c3) 15%,
     #ffffff 50%,
-    rgba(255,80,30,0.95) 85%,
-    rgba(255,80,30,0) 100%);
-  box-shadow: 0 0 24px 8px rgba(255,160,40,0.7), 0 0 48px 14px rgba(255,80,30,0.45), 0 0 80px 22px rgba(255,40,20,0.25);
+    var(--fx-c1) 85%,
+    rgba(255,255,255,0) 100%);
+  box-shadow:
+    0 0 24px 8px var(--fx-c2),
+    0 0 48px 14px var(--fx-c1),
+    0 0 80px 22px var(--fx-c1);
   animation: fx-beam 0.85s cubic-bezier(0.3,0.7,0.4,1) forwards;
   border-radius: 6px;
 }
@@ -508,9 +514,31 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
   100% { opacity: 0; transform: translateY(-50%) rotate(var(--angle, 0deg)) scaleY(0.3); }
 }
 
-/* Inner crackle — bright white core */
+/* Faction-colored lightning bolts — SVG zigzag paths overlaid on beam */
+.fx-attack-lightning {
+  position: fixed; z-index: 1403; pointer-events: none;
+  height: 40px; transform-origin: 0 50%;
+  margin-top: -20px;
+  animation: fx-lightning-flicker 0.85s ease-out forwards;
+}
+.fx-attack-lightning svg {
+  width: 100%; height: 100%; overflow: visible;
+  filter: drop-shadow(0 0 3px currentColor) drop-shadow(0 0 10px currentColor);
+}
+@keyframes fx-lightning-flicker {
+  0%   { opacity: 0; }
+  8%   { opacity: 1; }
+  14%  { opacity: 0.25; }
+  22%  { opacity: 1; }
+  36%  { opacity: 0.6; }
+  50%  { opacity: 1; }
+  68%  { opacity: 0.4; }
+  82%  { opacity: 0.85; }
+  100% { opacity: 0; }
+}
+
 .fx-attack-crackle {
-  position: fixed; z-index: 1401; pointer-events: none;
+  position: fixed; z-index: 1404; pointer-events: none;
   height: 3px; transform-origin: 0 50%;
   background: linear-gradient(90deg, transparent 0%, #ffffff 50%, transparent 100%);
   box-shadow: 0 0 12px 3px rgba(255,255,255,0.9);
@@ -524,14 +552,16 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
   100% { opacity: 0; height: 1px; }
 }
 
-/* Impact burst at target — radial flash */
 .fx-impact-burst {
   position: fixed; z-index: 1402; pointer-events: none;
   width: 4px; height: 4px;
   border-radius: 50%;
   transform: translate(-50%, -50%);
-  background: radial-gradient(circle, #fff 0%, rgba(255,200,60,0.95) 25%, rgba(255,80,30,0.7) 55%, transparent 80%);
-  box-shadow: 0 0 40px 20px rgba(255,140,40,0.6), 0 0 80px 40px rgba(255,60,20,0.35);
+  --fx-c1: #ff5018;
+  --fx-c2: #ff9c4a;
+  --fx-c3: #ffd49a;
+  background: radial-gradient(circle, #fff 0%, var(--fx-c3) 25%, var(--fx-c1) 55%, transparent 80%);
+  box-shadow: 0 0 40px 20px var(--fx-c2), 0 0 80px 40px var(--fx-c1);
   animation: fx-impact 0.7s cubic-bezier(0.25,0.85,0.35,1) forwards;
 }
 @keyframes fx-impact {
@@ -541,14 +571,15 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
   100% { opacity: 0; width: 180px; height: 180px; }
 }
 
-/* Stun frost burst — blue ice spiral */
 .fx-stun-burst {
   position: fixed; z-index: 1402; pointer-events: none;
   width: 4px; height: 4px;
   border-radius: 50%;
   transform: translate(-50%, -50%);
-  background: radial-gradient(circle, rgba(180,230,255,0.95) 0%, rgba(80,180,255,0.7) 40%, transparent 70%);
-  box-shadow: 0 0 32px 12px rgba(120,200,255,0.7), 0 0 64px 24px rgba(80,140,255,0.4);
+  --fx-c1: #4a9ee8;
+  --fx-c2: #b8e0ff;
+  background: radial-gradient(circle, var(--fx-c2) 0%, var(--fx-c1) 40%, transparent 70%);
+  box-shadow: 0 0 32px 12px var(--fx-c2), 0 0 64px 24px var(--fx-c1);
   animation: fx-stun 1.4s cubic-bezier(0.25,0.85,0.35,1) forwards;
 }
 @keyframes fx-stun {
@@ -556,6 +587,24 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
   20%  { opacity: 1; width: 80px; height: 80px; transform: translate(-50%, -50%) rotate(120deg); }
   60%  { opacity: 0.9; width: 140px; height: 140px; transform: translate(-50%, -50%) rotate(280deg); }
   100% { opacity: 0; width: 170px; height: 170px; transform: translate(-50%, -50%) rotate(380deg); }
+}
+
+/* Stun lightning crackles — small jagged bolts arranged radially around stunned target */
+.fx-stun-bolt {
+  position: fixed; z-index: 1404; pointer-events: none;
+  width: 32px; height: 10px;
+  --fx-c1: #4a9ee8;
+  --fx-c2: #b8e0ff;
+  opacity: 0;
+  animation: fx-stun-bolt 0.65s ease-out forwards;
+  filter: drop-shadow(0 0 4px var(--fx-c1)) drop-shadow(0 0 8px var(--fx-c1));
+}
+.fx-stun-bolt svg { width: 100%; height: 100%; overflow: visible; }
+@keyframes fx-stun-bolt {
+  0%   { opacity: 0; transform: translate(-50%,-50%) scale(0.4) rotate(var(--rot,0deg)); }
+  20%  { opacity: 1; transform: translate(-50%,-50%) scale(1.05) rotate(var(--rot,0deg)); }
+  60%  { opacity: 0.9; transform: translate(-50%,-50%) scale(1) rotate(var(--rot,0deg)); }
+  100% { opacity: 0; transform: translate(-50%,-50%) scale(1.2) rotate(var(--rot,0deg)); }
 }
 
 /* Heal sparkles — green rising particles */
