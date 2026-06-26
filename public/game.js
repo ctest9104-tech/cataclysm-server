@@ -215,6 +215,9 @@ window.rollDieManual=function(sides){
 
 function fireDiscardHooks(gp,discarderPid,uids){
   if(!uids||!uids.length)return;
+  /* Track which players have discarded each level (Vigo the Sharp reads this) */
+  gp.discardedPlayersThisLevel=gp.discardedPlayersThisLevel||{};
+  gp.discardedPlayersThisLevel[discarderPid]=true;
   allBoard(gp).forEach(u=>{const i=gp.inst[u];if(!i)return;const c=CARDS[i.cid];
     if(c&&c.onAnyDiscard)c.onAnyDiscard(gp,{pid:i.owner,src:u,discarderPid,discardedUids:uids});});
 }
@@ -333,6 +336,12 @@ function instSummary(gp,uid){
   const gained=(i._gainedKw&&Object.keys(i._gainedKw).filter(k=>i._gainedKw[k]===gp.level))||[];
   const allKw=(c.keywords||[]).slice();
   gained.forEach(k=>{if(!allKw.includes(k))allKw.push(k);});
+  /* Dynamic keywords: cards can define dynamicKeyword(gp,uid,kw) → true to grant that keyword right now */
+  if(c.dynamicKeyword){
+    ['Agility','Stealthy','Enforcer','Determination'].forEach(kw=>{
+      if(!allKw.includes(kw)&&c.dynamicKeyword(gp,uid,kw))allKw.push(kw);
+    });
+  }
   const hasAgility=allKw.includes('Agility')||c.grantsKeyword==='agility'||hasWieldedAgility(gp,uid);
   const maxActs=(i.agilityLevel||hasAgility)?2:1;
   return{uid,cid:i.cid,name:c.name,faction:c.faction,kind:i.kind,hp:i.hp,maxHp:i.maxHp,
@@ -382,6 +391,10 @@ function wieldWeapon(gp,wUid,fUid){
   w.wieldedBy=fUid;gp.inst[fUid].wielded=gp.inst[fUid].wielded||[];gp.inst[fUid].wielded.push(wUid);
   const c=CARDS[w.cid];if(c&&c.onWield)c.onWield(gp,{pid:w.owner,src:wUid});
   const owner=w.owner;if(gp.p[owner]&&gp.p[owner].boss&&gp.inst[gp.p[owner].boss]&&gp.inst[gp.p[owner].boss].cid==='toolshed')CARDS.toolshed.onWeaponEnter(gp,{pid:owner});
+  /* Global "weapon wielded" trigger (Mahna, Soft Speaker) */
+  allBoard(gp).forEach(u=>{const i=gp.inst[u];if(!i)return;const cc=CARDS[i.cid];
+    if(cc&&cc.onAnyWeaponWielded)cc.onAnyWeaponWielded(gp,i.owner,{weaponUid:wUid,wielderUid:fUid});
+  });
   log(gp,CARDS[w.cid].name+' wielded to '+CARDS[gp.inst[fUid].cid].name+'.');
 }
 function fireOnEnter(gp,uid,pid){
@@ -414,7 +427,18 @@ function destroyInstance(gp,uid,opts){
     if(cands.length){const t=cands[0];gp.inst[t].maxHp+=i.maxHp;gp.inst[t].hp+=i.maxHp;i.fortifiedUnder=t;gp.p[pid].board=gp.p[pid].board.filter(x=>x!==uid);log(gp,c.name+' Fortifies under '+CARDS[gp.inst[t].cid].name+'.');return;}
   }
   showDestroyEffect(uid);
-  if(i.kind==='fighter')gp.fighterLeftThisLevel=true;
+  if(i.kind==='fighter'){
+    gp.fighterLeftThisLevel=true;
+    /* Per-player Fighter death tracking (Gordo, Collector reads this) */
+    gp.fighterDeathsThisLevel=gp.fighterDeathsThisLevel||{};
+    gp.fighterDeathsThisLevel[pid]=(gp.fighterDeathsThisLevel[pid]||0)+1;
+  }
+  /* Fire onWielderDeath on each wielded weapon BEFORE the wielder is moved away */
+  if(i.kind==='fighter'&&i.wielded&&i.wielded.length){
+    i.wielded.forEach(wu=>{const wi=gp.inst[wu];if(!wi)return;const wc=CARDS[wi.cid];
+      if(wc&&wc.onWielderDeath)wc.onWielderDeath(gp,wu,uid);
+    });
+  }
   moveZone(gp,pid,uid,'board','grave');
   if(c.onDeath)c.onDeath(gp,{pid});
   allBoard(gp).forEach(u=>{if(gp.inst[u]&&CARDS[gp.inst[u].cid]&&CARDS[gp.inst[u].cid].onAnyFighterDeath&&i.kind==='fighter')CARDS[gp.inst[u].cid].onAnyFighterDeath(gp,u);});
@@ -424,8 +448,11 @@ function dealDamage(gp,uid,amt){
   const i=gp.inst[uid];if(!i||i.hp<=0)return;const c=CARDS[i.cid];if(!c)return;
   let reduced=amt;
 
-  if(c.armor){
-    const armorLeft=c.armor-(i.armorUsedThisLevel||0);
+  /* Armor on card OR on any wielded weapon (Makeshift Shield's grantsArmor:1) */
+  let armorTotal=c.armor||0;
+  if(i.wielded){i.wielded.forEach(wu=>{const wc=CARDS[(gp.inst[wu]||{}).cid];if(wc&&wc.grantsArmor)armorTotal+=wc.grantsArmor;});}
+  if(armorTotal>0){
+    const armorLeft=armorTotal-(i.armorUsedThisLevel||0);
     if(armorLeft>0){
       const blocked=Math.min(armorLeft,amt);
       reduced=Math.max(0,amt-blocked);
@@ -435,6 +462,10 @@ function dealDamage(gp,uid,amt){
   }
   i.hp-=reduced;i.dmgThisLevel=true;
   if(reduced>0){log(gp,c.name+' takes '+reduced+' damage.');showDamageNumber(uid,-reduced,'dmg');}
+  /* Fire onDamaged hook (Ryle, future cards). amount = damage actually dealt (after armor). */
+  if(reduced>0&&c.onDamaged){
+    c.onDamaged(gp,{pid:i.owner,src:uid,amount:reduced});
+  }
   if(i.hp<=0){
     /* Determination: if would die without a +1 Attack counter, set to 1 HP and give counter */
     if(c.determination&&!(i.counters&&i.counters.atk>0)){
@@ -469,6 +500,23 @@ function pendDiscardOptional(gp,ctx,prompt,cb){
     cb(gp2,Object.assign({},ctx),v||null);
   };
 }
+function pendDiscardForced(gp,ctx,prompt,cb){
+  /* Forced discard: must discard a card if any in hand. No Skip option. */
+  if(!gp.p[ctx.pid].hand.length){
+    log(gp,gp.p[ctx.pid].name+' has no cards to discard.');
+    if(cb)cb(gp,ctx,null);
+    return;
+  }
+  gp.pending={kind:'discard',forId:ctx.pid,prompt,options:gp.p[ctx.pid].hand.map(u=>({label:CARDS[gp.inst[u].cid].name,value:u}))};
+  S.pendingCb=(gp2,v)=>{
+    if(v&&gp2.p[ctx.pid].hand.includes(v)){
+      moveZone(gp2,ctx.pid,v,'hand','grave');
+      log(gp2,gp2.p[ctx.pid].name+' discards '+CARDS[gp2.inst[v].cid].name+' (forced).');
+      fireDiscardHooks(gp2,ctx.pid,[v]);
+    }
+    if(cb)cb(gp2,Object.assign({},ctx),v||null);
+  };
+}
 function cancelPendingAttack(gp){gp.pendingAttack=null;}
 function resumeAttack(gp,ctx){finishAttackDamage(gp,ctx);}
 
@@ -486,9 +534,19 @@ function startGame(room){
 function dealLevelCoins(gp,settings){Object.keys(gp.p).forEach(pid=>{if(!gp.p[pid].defeated)gp.p[pid].coins+=gp.level;});}
 function levelStart(gp,settings){
   gp.fighterLeftThisLevel=false;gp.ignoreStealthyLevel=false;
+  gp.fighterDeathsThisLevel={};gp.discardedPlayersThisLevel={};
   Object.keys(gp.p).forEach(pid=>{
     if(gp.p[pid].defeated)return;
-    gp.p[pid].board.concat([gp.p[pid].boss]).forEach(u=>{if(!u)return;const i=gp.inst[u];if(!i)return;i.actedCount=0;i.tempAtk=0;i.costOverrideLevel=undefined;i.armorUsedThisLevel=0;i.tempFaction=null;i._costOverride=null;if(i.stunned)i.stunned=false;});
+    /* Clear Fluorescent Fall name-block from prior level */
+    gp.p[pid]._cantReplayThisLevel={};
+    gp.p[pid].board.concat([gp.p[pid].boss]).forEach(u=>{if(!u)return;const i=gp.inst[u];if(!i)return;
+      i.actedCount=0;i.tempAtk=0;i.costOverrideLevel=undefined;i.armorUsedThisLevel=0;i.tempFaction=null;i._costOverride=null;
+      /* Ahna's persistent stun: if _stunPersist > current level, keep stunned this level too */
+      if(i.stunned){
+        if(i._stunPersist&&i._stunPersist>=gp.level){/* still stunned this level */}
+        else{i.stunned=false;i._stunPersist=undefined;}
+      }
+    });
     const hadNone=gp.p[pid].hand.length===0;
     drawN(gp,pid,settings.drawPerLevel||1);
     if(hadNone&&gp.inst[gp.p[pid].boss]&&gp.inst[gp.p[pid].boss].cid==='trapper')drawN(gp,pid,1);
@@ -528,7 +586,7 @@ function effectiveAtkCost(gp,uid){
   if(c.faction==='synth'&&i.cid!=='dreyver'&&gp.p[i.owner].board.some(u=>gp.inst[u]&&gp.inst[u].cid==='dreyver'&&gp.inst[u].hp>0))cost=Math.max(1,cost-1);
   return Math.max(0,cost);
 }
-function canAct(gp,uid){const i=gp.inst[uid];if(!i)return false;const c=CARDS[i.cid];if(!c)return false;const maxActs=(i.agilityLevel||c.grantsKeyword==='agility'||hasWieldedAgility(gp,uid))?2:1;if(i.stunned)return false;return(i.actedCount||0)<maxActs;}
+function canAct(gp,uid){const i=gp.inst[uid];if(!i)return false;const c=CARDS[i.cid];if(!c)return false;const dynAg=c.dynamicKeyword&&c.dynamicKeyword(gp,uid,'Agility');const maxActs=(i.agilityLevel||c.grantsKeyword==='agility'||hasWieldedAgility(gp,uid)||dynAg||(c.keywords||[]).includes('Agility'))?2:1;if(i.stunned)return false;return(i.actedCount||0)<maxActs;}
 function validDefenders(gp,attackerOwner,attackerCid){
   if(!attackerCid)return[];const c=CARDS[attackerCid];if(!c)return[];let targets=[];
   Object.keys(gp.p).forEach(pid=>{
@@ -617,7 +675,14 @@ function resolvePendingAttack(gp){
   const ai=gp.inst[ctx.attacker];if(!ai||ai.hp<=0)return true;
   const di=gp.inst[ctx.defender];if(!di||di.hp<=0)return true;
   const ac=CARDS[ai.cid];
+  /* Attacker's preAttack fires before damage — it must call finishAttackDamage when done */
   if(ac&&ac.preAttack){ac.preAttack(gp,ctx);return true;}
+  /* Wielded weapons may have onWielderPreAttack (e.g. Whiskers) — also must call finishAttackDamage */
+  const wielded=ai.wielded||[];
+  for(let i=0;i<wielded.length;i++){
+    const wc=CARDS[gp.inst[wielded[i]].cid];
+    if(wc&&wc.onWielderPreAttack){wc.onWielderPreAttack(gp,ctx);return true;}
+  }
   finishAttackDamage(gp,ctx);return true;
 }
 
@@ -654,12 +719,22 @@ function finishAttackDamage(gp,ctx){
   const defenderCidBefore=gp.inst[ctx.defender]?gp.inst[ctx.defender].cid:null;
   dealDamage(gp,ctx.defender,dmg);
   (gp.inst[ctx.attacker]&&gp.inst[ctx.attacker].wielded||[]).forEach(wu=>{const wc=CARDS[gp.inst[wu].cid];if(wc&&wc.onWielderDealtDamage)wc.onWielderDealtDamage(gp,ctx.attacker,dmg);});
+  /* Attacker-side dealt-damage hook (Kat Five and similar carry-damage effects) */
+  if(dmg>0&&ac&&ac.onAttackerDealtDamage){
+    ac.onAttackerDealtDamage(gp,ctx.attacker,{pid:ctx.pid,defender:ctx.defender,amount:dmg});
+  }
   const ac=CARDS[(gp.inst[ctx.attacker]||{}).cid];if(ac&&ac.onAttack)ac.onAttack(gp,{pid:ctx.pid,src:ctx.attacker});
   if(ac)log(gp,ac.name+' attacks for '+dmg+' damage.');
   /* Did the attacker kill the defender? Fire onAttackKill (Trouble, Muck, Charlotte). */
   const defGone=!gp.inst[ctx.defender]||gp.inst[ctx.defender].hp<=0;
   if(defGone&&gp.inst[ctx.attacker]&&ac&&ac.onAttackKill){
     ac.onAttackKill(gp,{pid:ctx.pid,src:ctx.attacker,defenderCid:defenderCidBefore,defenderUid:ctx.defender});
+  }
+  /* Weapon-side kill trigger (Face of Death: untap wielder when it defeats a Fighter) */
+  if(defGone&&gp.inst[ctx.attacker]&&(CARDS[defenderCidBefore]||{}).type==='fighter'){
+    (gp.inst[ctx.attacker].wielded||[]).forEach(wu=>{const wc=CARDS[(gp.inst[wu]||{}).cid];
+      if(wc&&wc.onWielderKillFighter)wc.onWielderKillFighter(gp,ctx.attacker,defenderCidBefore);
+    });
   }
 }
 
@@ -730,6 +805,10 @@ window.playHandCard=async function(u){
     const playCost=(c.type==='fighter'||c.type==='weapon')?0:(c.cost||0);
     if(gp.p[pid].coins<playCost)return alert('Not enough coins.');
     if(c.type==='fighter'){if((c.level||0)>gp.level)return alert('Level requirement not met (need Lvl '+(c.level)+').');
+      /* Fluorescent Fall: enforce per-player-per-level name block */
+      if(gp.p[pid]._cantReplayThisLevel&&gp.p[pid]._cantReplayThisLevel[c.name]===gp.level){
+        return alert(c.name+' can\'t be replayed this level (Fluorescent Fall).');
+      }
       moveZone(gp,pid,u,'hand','board');resetInstance(gp,u);
       fireOnEnter(gp,u,pid);
       gp.passedSet=[];}
@@ -743,7 +822,13 @@ window.playHandCard=async function(u){
       }}
     else{spendCoins(gp,pid,playCost);moveZone(gp,pid,u,'hand','grave');gp.passedSet=[];
       if(c.run){log(gp,gp.p[pid].name+' plays '+c.name+'.');c.run(gp,{pid,src:u});}
-      else log(gp,gp.p[pid].name+' plays '+c.name+' \u2014 GM mode for manual effects, or right-click card to read.');}
+      else log(gp,gp.p[pid].name+' plays '+c.name+' \u2014 GM mode for manual effects, or right-click card to read.');
+      /* Mother May Eye and similar: trigger on any T/R played */
+      if(c.type==='tactic'||c.type==='response'){
+        allBoard(gp).forEach(uu=>{const ii=gp.inst[uu];if(!ii)return;const cc=CARDS[ii.cid];
+          if(cc&&cc.onAnyTacticOrResponsePlayed)cc.onAnyTacticOrResponsePlayed(gp,pid);});
+      }
+    }
     if(gp.responseWindow&&c.type==='response'){
       if(!gp.pendingAttack){gp.responseWindow=null;}
       else if(!gp.pending){resolvePendingAttack(gp);}
@@ -759,15 +844,24 @@ window.confirmAttack=async function(defUid){
     if(gp.curIdx!==gp.order.indexOf(pid))return alert('Not your turn.');
     if(!canAct(gp,atkUid))return alert('That unit can\'t act again this level.');
     if(!diffinCanAttack(gp,atkUid))return alert('Diffin can only attack if you have a Fighter with 5+ Health on your team.');
+    /* Joe Strummage: can only attack if you have 1 or fewer cards in hand */
+    if(CARDS[gp.inst[atkUid].cid].id==='render-mq8347x5'&&gp.p[pid].hand.length>1){
+      return alert('Joe Strummage can only attack if you have 1 or fewer cards in hand.');
+    }
     if(!declareAttack(gp,atkUid,defUid,pid))return alert('Not enough coins to attack.');
     gp.p[pid].hasActed=true;
     if(!gp.pending&&!gp.responseWindow)nextTurn(gp);});
 };
 window.useAbility=async function(u,idx){
   await act(r=>{const gp=r.game;const pid=S.myId;
-    const i=gp.inst[u];const c=CARDS[i.cid];let ab=(c.activated||[])[idx];let wAb=null;
-    if(ab===undefined){(i.wielded||[]).forEach(wu=>{const wc=CARDS[gp.inst[wu].cid];([...(wc.weaponActivated||[]),(wc.grantsActivated||[])]).flat().forEach((a,ai)=>{if(('w'+wu+ai)===String(idx))wAb=a;});});}
-    const useAb=ab||wAb;if(!useAb)return;
+    const i=gp.inst[u];const c=CARDS[i.cid];let ab=(c.activated||[])[idx];let wAb=null;let linkedAb=null;
+    if(ab===undefined){(i.wielded||[]).forEach(wu=>{const wc=CARDS[gp.inst[wu].cid];const dyn=wc.dynamicGrantsActivated?wc.dynamicGrantsActivated(gp,wu):[];([...(wc.weaponActivated||[]),(wc.grantsActivated||[]),dyn]).flat().forEach((a,ai)=>{if(('w'+wu+ai)===String(idx))wAb=a;});});}
+    /* Charlotte: 'linked0', 'linked1' etc index into linkedFighter's activated[] */
+    if(ab===undefined&&typeof idx==='string'&&idx.startsWith('linked')&&i.linkedFighter&&gp.inst[i.linkedFighter]){
+      const lc=CARDS[gp.inst[i.linkedFighter].cid];const li=parseInt(idx.slice(6),10);
+      if(lc&&(lc.activated||[])[li])linkedAb=(lc.activated||[])[li];
+    }
+    const useAb=ab||wAb||linkedAb;if(!useAb)return;
     if(gp.responseWindow){
       if(gp.responseWindow.priority!==pid)return alert('Another player has response priority.');
       if(!useAb.label||!/response/i.test(useAb.label))return alert('Only Response abilities can be activated right now.');
@@ -776,7 +870,20 @@ window.useAbility=async function(u,idx){
       return alert('Not your turn.');
     }
     if(useAb.cost.tap&&!canAct(gp,u))return alert('Already acted this level.');
-    if(useAb.cost.coins&&!spendCoins(gp,pid,useAb.cost.coins))return alert('Not enough coins.');
+    /* Per-ally ability cost modifier (Trouble, Forerunner: +① to others' ability costs) */
+    let needCoins=useAb.cost.coins||0;
+    gp.p[pid].board.concat([gp.p[pid].boss]).forEach(au=>{
+      if(!au||au===u)return;const ai=gp.inst[au];if(!ai)return;const ac=CARDS[ai.cid];if(!ac)return;
+      if(ac.abilityCostModForAlly)needCoins+=(ac.abilityCostModForAlly(gp,u,au)||0);
+    });
+    /* Also Trouble on opponents adds to my costs */
+    eachOpponent(gp,pid,oppPid=>{
+      gp.p[oppPid].board.concat([gp.p[oppPid].boss]).forEach(au=>{
+        if(!au)return;const ai=gp.inst[au];if(!ai)return;
+        if((CARDS[ai.cid]||{}).id==='render-mq83senr')needCoins+=1;
+      });
+    });
+    if(needCoins>0&&!spendCoins(gp,pid,needCoins))return alert('Not enough coins (Trouble or similar increases cost).');
     if(useAb.cost.tap)i.actedCount=(i.actedCount||0)+1;
     if(useAb.cost.sacrifice)destroyInstance(gp,u,{skipFortify:true});
     if(useAb.cost.selfDamage){i.hp-=useAb.cost.selfDamage;if(i.hp<=0)destroyInstance(gp,u);}
@@ -949,12 +1056,33 @@ function bCard(gp,uid,opts){
     if(!s.tapped&&canAct(gp,uid))actBtns+=`<button class="bcard-btn atk-btn" onclick="startAttack('${uid}')">&#9876; ATK ${effectiveAtkCost(gp,uid)}&#9711;</button>`;
     (c.activated||[]).forEach((ab,idx)=>{
       const myCoins=gp.p[S.myId].coins;
-      const needCoins=(ab.cost&&ab.cost.coins)||0;
+      let needCoins=(ab.cost&&ab.cost.coins)||0;
+      /* Apply Trouble-style cost mods from allies + opps */
+      gp.p[S.myId].board.concat([gp.p[S.myId].boss]).forEach(au=>{
+        if(!au||au===uid)return;const ai=gp.inst[au];if(!ai)return;const ac=CARDS[ai.cid];if(!ac)return;
+        if(ac.abilityCostModForAlly)needCoins+=(ac.abilityCostModForAlly(gp,uid,au)||0);
+      });
+      Object.keys(gp.p).forEach(opid=>{if(opid===S.myId)return;
+        gp.p[opid].board.concat([gp.p[opid].boss]).forEach(au=>{if(au&&(CARDS[(gp.inst[au]||{}).cid]||{}).id==='render-mq83senr')needCoins+=1;});
+      });
       const needsTap=!!(ab.cost&&ab.cost.tap);
       const disabled=(needCoins>myCoins)||(needsTap&&!canAct(gp,uid))||i.stunned;
       actBtns+=`<button class="bcard-btn ab-btn${disabled?' disabled':''}" ${disabled?'disabled':`onclick="useAbility('${uid}',${idx})"`} title="${ab.label}${disabled?' (cannot use)':''}">${ab.label.slice(0,18)}</button>`;
     });
-    wielded.forEach(wu=>{const wc=CARDS[gp.inst[wu].cid];([...(wc.weaponActivated||[]),(wc.grantsActivated||[])]).flat().forEach((ab,ai)=>{
+    /* Charlotte: also render activated abilities of the linked Fighter */
+    if(c.grantsActivatedFromLinked&&i.linkedFighter&&gp.inst[i.linkedFighter]){
+      const linkedC=CARDS[gp.inst[i.linkedFighter].cid];
+      (linkedC&&linkedC.activated||[]).forEach((ab,idx)=>{
+        const myCoins=gp.p[S.myId].coins;
+        const needCoins=(ab.cost&&ab.cost.coins)||0;
+        const needsTap=!!(ab.cost&&ab.cost.tap);
+        const disabled=(needCoins>myCoins)||(needsTap&&!canAct(gp,uid))||i.stunned;
+        actBtns+=`<button class="bcard-btn ab-btn${disabled?' disabled':''}" ${disabled?'disabled':`onclick="useAbility('${uid}','linked${idx}')"`} title="(from linked ${linkedC.name}) ${ab.label}${disabled?' (cannot use)':''}">L: ${ab.label.slice(0,14)}</button>`;
+      });
+    }
+    wielded.forEach(wu=>{const wc=CARDS[gp.inst[wu].cid];
+      const dyn=wc.dynamicGrantsActivated?wc.dynamicGrantsActivated(gp,wu):[];
+      ([...(wc.weaponActivated||[]),(wc.grantsActivated||[]),dyn]).flat().forEach((ab,ai)=>{
       const myCoins=gp.p[S.myId].coins;
       const needCoins=(ab.cost&&ab.cost.coins)||0;
       const needsTap=!!(ab.cost&&ab.cost.tap);
@@ -1566,6 +1694,19 @@ function renderResponseWindow(){
         const untapped=!needsTap||(i.actedCount||0)<1;
         respAbilities.push({uid:u,abilityIdx:idx,label:ab.label,coinCost:needCoins,affordable,untapped,disabled:!affordable||!untapped,card:c,inst:i});
       });
+      /* Also enumerate wielded weapons' grantsActivated (e.g. Makeshift Shield's Block on its wielder) */
+      (i.wielded||[]).forEach(wu=>{
+        const wc=CARDS[(gp.inst[wu]||{}).cid];if(!wc)return;
+        const dyn=wc.dynamicGrantsActivated?wc.dynamicGrantsActivated(gp,wu):[];
+        ([...(wc.weaponActivated||[]),(wc.grantsActivated||[]),dyn]).flat().forEach((ab,ai)=>{
+          if(!ab.label||!/response/i.test(ab.label))return;
+          const needCoins=(ab.cost&&ab.cost.coins)||0;
+          const needsTap=!!(ab.cost&&ab.cost.tap);
+          const affordable=needCoins<=myCoins;
+          const untapped=!needsTap||(i.actedCount||0)<1;
+          respAbilities.push({uid:u,abilityIdx:'w'+wu+ai,label:ab.label,coinCost:needCoins,affordable,untapped,disabled:!affordable||!untapped,card:c,inst:i});
+        });
+      });
     });
   }
 
@@ -1599,7 +1740,7 @@ function renderResponseWindow(){
         <div class="resp-prompt">Your priority. Play a Response from hand, activate a Response ability on the board, or allow the attack.</div>
         ${respAbilities.length?`
           <div class="resp-cards-label">RESPONSE ABILITIES ON YOUR BOARD</div>
-          <div class="resp-cards">${respAbilities.map(r=>`<div class="resp-card resp-board-ability${r.disabled?' disabled':''}" ${r.disabled?'':`onclick="useAbility('${r.uid}',${r.abilityIdx})"`} title="${r.card.name}: ${r.label}${r.disabled?' (cannot use)':''}">
+          <div class="resp-cards">${respAbilities.map(r=>`<div class="resp-card resp-board-ability${r.disabled?' disabled':''}" ${r.disabled?'':`onclick="useAbility('${r.uid}','${r.abilityIdx}')"`} title="${r.card.name}: ${r.label}${r.disabled?' (cannot use)':''}">
             ${artImg(r.inst.cid,'resp-card-img')}
             <div class="resp-card-foot">
               <div class="resp-card-name">${r.card.name}</div>
@@ -1704,6 +1845,8 @@ function effectiveAtkCost(gp,uid){
   let cost=c.atkCost||0;
 
   if(i._costOverride!==undefined&&i._costOverride!==null)cost=i._costOverride;
+  /* Dynamic atk cost hook (Muck: cost = current HP) */
+  if(c.dynamicAtkCost)cost=c.dynamicAtkCost(gp,uid);
   const pid=i.owner;
 
   (i.wielded||[]).forEach(wu=>{const wc=CARDS[gp.inst[wu].cid];
