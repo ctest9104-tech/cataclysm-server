@@ -384,7 +384,7 @@ function addCounter(gp,uid,type,amt){
   if(type==='atk'&&amt>0){const pid=i.owner;(gp.p[pid].board.concat([gp.p[pid].boss])).forEach(u=>{if(u&&gp.inst[u]&&CARDS[gp.inst[u].cid]&&CARDS[gp.inst[u].cid].onCounterPlaced)CARDS[gp.inst[u].cid].onCounterPlaced(gp,pid);});}
   log(gp,(c?c.name:'?')+' gets '+type+' counter ('+(amt>0?'+':'')+amt+').');
 }
-function stunInstance(gp,uid){const i=gp.inst[uid];if(!i)return;i.stunned=true;i.actedCount=99;log(gp,(CARDS[i.cid]||{}).name+' is stunned.');showStunEffect(uid);}
+function stunInstance(gp,uid,sourceFaction){const i=gp.inst[uid];if(!i)return;i.stunned=true;i.actedCount=99;log(gp,(CARDS[i.cid]||{}).name+' is stunned.');showStunEffect(uid,sourceFaction);}
 function createToken(gp,pid,tokenId){const u=newInstance(gp,tokenId,pid);gp.p[pid].board.push(u);log(gp,gp.p[pid].name+' creates '+CARDS[tokenId].name+'.');return u;}
 function wieldWeapon(gp,wUid,fUid){
   const w=gp.inst[wUid];if(!w||!gp.inst[fUid])return;
@@ -652,7 +652,10 @@ function declareAttack(gp,atkUid,defUid,ctxPid){
   const cost=effectiveAtkCost(gp,atkUid);if(!spendCoins(gp,ctxPid,cost))return false;
   gp.inst[atkUid].actedCount=(gp.inst[atkUid].actedCount||0)+1;gp.passedSet=[];
   gp.pendingAttack={attacker:atkUid,defender:defUid,attackerOwner:ctxPid};
-  showAttackFlash(atkUid,defUid);
+  const ai=gp.inst[atkUid];const atkFaction=(ai&&CARDS[ai.cid]||{}).faction;
+  /* Whiskers (and similar) override faction during the attack */
+  const fxFaction=(ai&&ai.tempFaction&&ai.tempFactionLevel===gp.level)?ai.tempFaction:atkFaction;
+  showAttackFlash(atkUid,defUid,fxFaction);
   fireOnAttacked(gp,defUid,atkUid);
   const nextPri=nextResponsePriority(gp,ctxPid,[]);
   if(!nextPri)return resolvePendingAttack(gp);
@@ -698,6 +701,10 @@ window.passResponse=async function(){
       if(!gp.pending&&!gp.responseWindow)nextTurn(gp);
     } else {
       gp.responseWindow.priority=next;
+      /* Auto-skip the new priority holder if they have no responses (Block, hand cards, etc) */
+      autoSkipNoResponders(gp);
+      /* autoSkipNoResponders may have closed the window itself */
+      if(!gp.responseWindow&&!gp.pending)nextTurn(gp);
     }
   });
 };
@@ -1906,11 +1913,21 @@ function showDamageNumber(uid,amt,kind){
   }catch(e){}
 }
 
-function showAttackFlash(atkUid,defUid){
+/* Faction color sets for visual effects */
+const FX_FACTION_COLORS={
+  synth:    {primary:'#FF6D23',glow:'#ff9c4a',core:'#ffd49a'},
+  mystic:   {primary:'#9B59B6',glow:'#c685e3',core:'#e8c4ff'},
+  shifter:  {primary:'#4A9EE8',glow:'#7ec3f5',core:'#cce9ff'},
+  survivor: {primary:'#76C442',glow:'#a4dc78',core:'#dcf5c4'},
+  apex:     {primary:'#F0B429',glow:'#f7cf6b',core:'#ffe9b3'},
+  neutral:  {primary:'#80b4ff',glow:'#b8e0ff',core:'#e8f4ff'}
+};
 
+function showAttackFlash(atkUid,defUid,faction){
   const a=document.querySelector('[data-uid="'+atkUid+'"]');
   const d=document.querySelector('[data-uid="'+defUid+'"]');
   if(!a||!d)return;
+  const col=FX_FACTION_COLORS[faction]||FX_FACTION_COLORS.synth;
   const ar=a.getBoundingClientRect(),dr=d.getBoundingClientRect();
   const ax=ar.left+ar.width/2,ay=ar.top+ar.height/2;
   const dx=dr.left+dr.width/2,dy=dr.top+dr.height/2;
@@ -1919,20 +1936,57 @@ function showAttackFlash(atkUid,defUid){
 
   requestAnimationFrame(()=>{
     try{
-
       const beam=document.createElement('div');beam.className='fx-attack-beam';
+      beam.style.setProperty('--fx-c1',col.primary);
+      beam.style.setProperty('--fx-c2',col.glow);
+      beam.style.setProperty('--fx-c3',col.core);
+      beam.style.setProperty('--angle',ang+'deg');
       beam.style.left=ax+'px';beam.style.top=ay+'px';
       beam.style.width=len+'px';
       beam.style.transform='translateY(-50%) rotate('+ang+'deg)';
       document.body.appendChild(beam);
 
+      /* Lightning bolt SVG overlay — multiple jagged paths in faction color */
+      const lightning=document.createElement('div');lightning.className='fx-attack-lightning';
+      lightning.style.setProperty('--angle',ang+'deg');
+      lightning.style.color=col.primary;
+      lightning.style.left=ax+'px';lightning.style.top=ay+'px';
+      lightning.style.width=len+'px';
+      lightning.style.transform='translateY(-50%) rotate('+ang+'deg)';
+      const bolts=3;const segments=Math.max(10,Math.floor(len/30));
+      let svg='<svg width="'+len+'" height="40" viewBox="0 0 '+Math.max(len,1)+' 40" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">';
+      svg+='<defs>';
+      for(let b=0;b<bolts;b++){
+        svg+='<filter id="fxglow_'+atkUid+'_'+b+'" x="-20%" y="-50%" width="140%" height="200%"><feGaussianBlur stdDeviation="'+(2.2-b*0.5)+'" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>';
+      }
+      svg+='</defs>';
+      for(let b=0;b<bolts;b++){
+        const pts=[];
+        for(let s=0;s<=segments;s++){
+          const x=(s/segments)*len;
+          const jitter=(s===0||s===segments)?0:(Math.random()-0.5)*(16-b*3);
+          pts.push(x.toFixed(1)+','+(20+jitter).toFixed(1));
+        }
+        const stroke=b===0?'#ffffff':col.primary;
+        const width=(3-b*0.6).toFixed(1);
+        const op=(0.95-b*0.18).toFixed(2);
+        svg+='<polyline points="'+pts.join(' ')+'" stroke="'+stroke+'" stroke-width="'+width+'" fill="none" opacity="'+op+'" stroke-linecap="round" stroke-linejoin="round" filter="url(#fxglow_'+atkUid+'_'+b+')"/>';
+      }
+      svg+='</svg>';
+      lightning.innerHTML=svg;
+      document.body.appendChild(lightning);
+
       const crackle=document.createElement('div');crackle.className='fx-attack-crackle';
+      crackle.style.setProperty('--angle',ang+'deg');
       crackle.style.left=ax+'px';crackle.style.top=ay+'px';
       crackle.style.width=len+'px';
       crackle.style.transform='translateY(-50%) rotate('+ang+'deg)';
       document.body.appendChild(crackle);
 
       const burst=document.createElement('div');burst.className='fx-impact-burst';
+      burst.style.setProperty('--fx-c1',col.primary);
+      burst.style.setProperty('--fx-c2',col.glow);
+      burst.style.setProperty('--fx-c3',col.core);
       burst.style.left=dx+'px';burst.style.top=dy+'px';
       document.body.appendChild(burst);
 
@@ -1940,22 +1994,61 @@ function showAttackFlash(atkUid,defUid){
       if(target)target.classList.add('fx-shake');
 
       setTimeout(()=>{
-        try{beam.remove();crackle.remove();burst.remove();}catch(e){}
+        try{beam.remove();crackle.remove();burst.remove();lightning.remove();}catch(e){}
         if(target)target.classList.remove('fx-shake');
       },900);
     }catch(e){console.warn('attack flash failed:',e);}
   });
 }
 
-function showStunEffect(uid){
+function showStunEffect(uid,sourceFaction){
+  const col=FX_FACTION_COLORS[sourceFaction]||FX_FACTION_COLORS.neutral;
   requestAnimationFrame(()=>{
     try{
       const el=document.querySelector('[data-uid="'+uid+'"]');if(!el)return;
       const r=el.getBoundingClientRect();
+      const cx=r.left+r.width/2,cy=r.top+r.height/2;
+
+      /* Central burst */
       const fx=document.createElement('div');fx.className='fx-stun-burst';
-      fx.style.left=(r.left+r.width/2)+'px';fx.style.top=(r.top+r.height/2)+'px';
+      fx.style.setProperty('--fx-c1',col.primary);
+      fx.style.setProperty('--fx-c2',col.glow);
+      fx.style.left=cx+'px';fx.style.top=cy+'px';
       document.body.appendChild(fx);
       setTimeout(()=>{try{fx.remove();}catch(e){}},1500);
+
+      /* Lightning bolt crackles around the stunned target */
+      const crackleCount=6;
+      const allBolts=[];
+      for(let i=0;i<crackleCount;i++){
+        const angle=(i/crackleCount)*2*Math.PI+(Math.random()-0.5)*0.4;
+        const dist=28+Math.random()*22;
+        const lx=cx+Math.cos(angle)*dist;
+        const ly=cy+Math.sin(angle)*dist;
+        const bolt=document.createElement('div');bolt.className='fx-stun-bolt';
+        bolt.style.setProperty('--fx-c1',col.primary);
+        bolt.style.setProperty('--fx-c2',col.glow);
+        bolt.style.left=lx+'px';bolt.style.top=ly+'px';
+        const rotation=(angle*180/Math.PI)+(Math.random()-0.5)*40;
+        bolt.style.transform='translate(-50%,-50%) rotate('+rotation+'deg)';
+        bolt.style.animationDelay=(i*55)+'ms';
+        /* Embed a small jagged SVG inside */
+        const blen=20+Math.random()*14;
+        let bsvg='<svg width="'+blen+'" height="10" viewBox="0 0 '+blen+' 10" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">';
+        const segs=5;const pts=[];
+        for(let s=0;s<=segs;s++){
+          const x=(s/segs)*blen;
+          const jit=(s===0||s===segs)?0:(Math.random()-0.5)*5;
+          pts.push(x.toFixed(1)+','+(5+jit).toFixed(1));
+        }
+        bsvg+='<polyline points="'+pts.join(' ')+'" stroke="'+col.glow+'" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.95"/>';
+        bsvg+='<polyline points="'+pts.join(' ')+'" stroke="#ffffff" stroke-width="1" fill="none" stroke-linecap="round" opacity="0.9"/>';
+        bsvg+='</svg>';
+        bolt.innerHTML=bsvg;
+        document.body.appendChild(bolt);
+        allBolts.push(bolt);
+      }
+      setTimeout(()=>{allBolts.forEach(b=>{try{b.remove();}catch(e){}});},1500);
     }catch(e){}
   });
 }
