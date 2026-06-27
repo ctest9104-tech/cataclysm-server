@@ -3354,4 +3354,4 @@ function makeBlockGrantForWielder(coinCost){
         }
       });
   };
-})();
+})(); 
