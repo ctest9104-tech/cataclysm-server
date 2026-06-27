@@ -1,4 +1,4 @@
-/* CATACLYSM ARCADE Community Project Not Created By The Team */
+/* CATACLYSM ARCADE Community Project Not Connected To The Team Yet Full Respect And Love To The Team And BDM BLEARGH */
 const SUPABASE_URL='https://mhvtcztuusjuzdjamnfo.supabase.co';
 const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1odnRjenR1dXNqdXpkamFtbmZvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4MzE1MDUsImV4cCI6MjA5NzQwNzUwNX0.b7fq9uditGv3rabTvYeAyGxJxhSAmoVK0TpyfuRBass';
 let _db=null;
@@ -792,13 +792,12 @@ window.passResponse=async function(){
     const next=nextResponsePriority(gp,gp.responseWindow.attackerPid,gp.responseWindow.passed);
     if(!next){
       resolvePendingAttack(gp);
-      if(!gp.pending&&!gp.responseWindow)nextTurn(gp);
+      /* Per rules: attack is a MOVE during the attacker's turn. Resolution returns
+         control to the attacker — they keep their turn until they click END TURN. */
     } else {
       gp.responseWindow.priority=next;
-      /* Auto-skip the new priority holder if they have no responses (Block, hand cards, etc) */
       autoSkipNoResponders(gp);
-      /* autoSkipNoResponders may have closed the window itself */
-      if(!gp.responseWindow&&!gp.pending)nextTurn(gp);
+      /* If autoSkipNoResponders closed the window via resolve, control returns to attacker. */
     }
   });
 };
@@ -959,7 +958,9 @@ window.confirmAttack=async function(defUid){
     }
     if(!declareAttack(gp,atkUid,defUid,pid))return alert('Not enough coins to attack.');
     gp.p[pid].hasActed=true;
-    if(!gp.pending&&!gp.responseWindow)nextTurn(gp);});
+    /* Per round-robin rules: attack is a move during your turn. You keep your turn
+       and may continue making moves until you click END TURN. */
+  });
 };
 window.useAbility=async function(u,idx){
   await act(r=>{const gp=r.game;const pid=S.myId;
@@ -1003,10 +1004,13 @@ window.useAbility=async function(u,idx){
     if(useAb.cost.sacrifice)destroyInstance(gp,u,{skipFortify:true});
     if(useAb.cost.selfDamage){i.hp-=useAb.cost.selfDamage;if(i.hp<=0)destroyInstance(gp,u);}
     useAb.run(gp,{pid,src:u});gp.p[pid].hasActed=true;
+    /* Per round-robin rules: ability use is a move during your turn. You keep your
+       turn until you click END TURN. Response-window abilities (Block etc.) close
+       the window or resolve the attack but don't end the attacker's turn. */
     if(gp.responseWindow){
       if(!gp.pendingAttack){gp.responseWindow=null;}
-      else if(!gp.pending){resolvePendingAttack(gp);if(!gp.responseWindow)nextTurn(gp);}
-    } else if(!gp.pending){nextTurn(gp);}
+      else if(!gp.pending){resolvePendingAttack(gp);}
+    }
   });
 };
 /* Per rules: pass is a permanent commitment for the level. Once a player passes,
@@ -1311,7 +1315,7 @@ window.fortifyFromHand=async function(u){
         });
       });
     gp.p[pid].hasActed=true;
-    if(!gp.pending)nextTurn(gp);
+    /* Fortify from hand is a move during your turn — you keep your turn until END TURN. */
   });
 };
 
