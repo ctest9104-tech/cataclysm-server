@@ -1,4 +1,4 @@
-/* CATACLYSM ARCADE Community Project Not Connected To The Team Yet Full Respect And Love To The Team And BDM BLEARGH */
+/* CATACLYSM ARCADE Community Project Not The Team All Respect To The Renowned BDM and BLEARGH */
 const SUPABASE_URL='https://mhvtcztuusjuzdjamnfo.supabase.co';
 const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1odnRjenR1dXNqdXpkamFtbmZvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4MzE1MDUsImV4cCI6MjA5NzQwNzUwNX0.b7fq9uditGv3rabTvYeAyGxJxhSAmoVK0TpyfuRBass';
 let _db=null;
@@ -648,10 +648,14 @@ function levelStart(gp,settings){
 function advanceLevel(gp,settings){
   Object.keys(gp.p).forEach(pid=>{gp.p[pid].coins=0;});
   gp.level++;
-  gp.firstIdx=(gp.firstIdx+1)%gp.order.length;
+  /* Per the round-robin rules: "the designation rotates to the next player clockwise each
+     level." The new first player is the player CLOCKWISE FROM whoever clicked End Turn
+     last (gp.curIdx at this moment), not from the previous level's starter. So if p2 was
+     the last to End Turn, the next clockwise player (p1 in 2-player) starts the new level. */
+  gp.firstIdx=(gp.curIdx+1)%gp.order.length;
   while(gp.p[gp.order[gp.firstIdx]].defeated)gp.firstIdx=(gp.firstIdx+1)%gp.order.length;
   gp.curIdx=gp.firstIdx;gp.passedSet=[];
-  levelStart(gp,settings);log(gp,'\u2014 Level '+gp.level+' begins \u2014');
+  levelStart(gp,settings);log(gp,'\u2014 Level '+gp.level+' begins (\u2018'+gp.p[gp.order[gp.firstIdx]].name+'\u2019 first) \u2014');
 }
 function activePlayers(gp){return gp.order.filter(p=>!gp.p[p].defeated);}
 /* Per rules: "the next player in clockwise order WHO HAS NOT ALREADY PASSED then has
