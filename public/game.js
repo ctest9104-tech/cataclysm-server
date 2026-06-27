@@ -157,6 +157,14 @@ function ingestCard(o){
   /* Side-effect flags driven by keyword presence */
   if (c.keywords.includes('Determination')) c.determination = true;
   if (c.keywords.includes('Fortify')) c.fortifyInstead = true;
+  /* Response ②: Fortify is a DIFFERENT ability from the Fortify keyword. The keyword is
+     a passive die-replacement ("If would die, Fortifies instead"). Response ②: Fortify is
+     an active from-hand ability that places the card under a Synth ally for HP gain.
+     ONLY cards whose text explicitly contains "Response ②: Fortify" (Ada, Pia) get the
+     from-hand button. Blue Gelati has the keyword for die-replacement but NOT this ability. */
+  if (/Response\s+\u2461[\u2299:]?\s*:\s*Fortify/i.test(c.text || '')) {
+    c.hasFortifyResponse = true;
+  }
   /* Phantasmal — only flag canPhantasmal if it's truly a passive (rare). Activated abilities
      that "become Phantasmal" don't make the card passively Phantasmal. */
   if (declaresKw(cleanedForDeclaration, 'Phantasmal')) {
@@ -485,7 +493,14 @@ function enforceSameNameRule(gp,uid,pid){
 function destroyInstance(gp,uid,opts){
   const i=gp.inst[uid];if(!i)return;const c=CARDS[i.cid];if(!c)return;const pid=i.owner;
   if(c.fortifyInstead&&!(opts&&opts.skipFortify)){
-    const cands=(gp.p[pid].board.concat([gp.p[pid].boss])).filter(u=>u&&u!==uid&&gp.inst[u]&&!gp.inst[u].fortifiedUnder&&(gp.inst[u].kind==='fighter'||gp.inst[u].kind==='boss')&&gp.inst[u].hp>0);
+    /* Per text: "Place this card under a Synth Boss or Fighter on your team that isn't Fortified." */
+    const cands=(gp.p[pid].board.concat([gp.p[pid].boss])).filter(u=>{
+      if(!u||u===uid)return false;
+      const ai=gp.inst[u];if(!ai||!ai.hp||ai.hp<=0||ai.fortifiedUnder)return false;
+      if(ai.kind!=='fighter'&&ai.kind!=='boss')return false;
+      const ac=CARDS[ai.cid];if(!ac||ac.faction!=='synth')return false;
+      return true;
+    });
     if(cands.length){const t=cands[0];gp.inst[t].maxHp+=i.maxHp;gp.inst[t].hp+=i.maxHp;i.fortifiedUnder=t;gp.p[pid].board=gp.p[pid].board.filter(x=>x!==uid);log(gp,c.name+' Fortifies under '+CARDS[gp.inst[t].cid].name+'.');
       /* Global Fortify trigger (Mahna, Soft Speaker) */
       allBoard(gp).forEach(u=>{const ii=gp.inst[u];if(!ii)return;const cc=CARDS[ii.cid];
@@ -1212,7 +1227,7 @@ function hCard(gp,uid,myTurn,pend,fanOpts){
   const playable=canPlay||isInstant;
   const typeChar=c.type==='fighter'?'F':c.type==='weapon'?'W':c.type==='tactic'?'T':'R';
   const fanStyle=fanOpts?`--hand-rot:${fanOpts.rot};--hand-lift:${fanOpts.lift};`:'';
-  const canFortifyHand=myTurn&&!pend&&!S.attackPick&&c.type==='fighter'&&c.fortifyInstead&&c.faction==='synth'&&gp.p[S.myId].coins>=2&&hasFortifyHost(gp,S.myId,uid);
+  const canFortifyHand=myTurn&&!pend&&!S.attackPick&&c.type==='fighter'&&c.hasFortifyResponse&&c.faction==='synth'&&gp.p[S.myId].coins>=2&&hasFortifyHost(gp,S.myId,uid);
   return`<div class="hcard${playable?'':' unplayable'}" ${fanOpts?`data-hand-pos="${fanOpts.idx}"`:''} style="border-color:${fCol}55;${fanStyle}"
     ${playable?`onclick="playHandCard('${uid}')"`:''}
     oncontextmenu="showZoom('${i.cid}');return false">
@@ -1243,7 +1258,7 @@ window.fortifyFromHand=async function(u){
     if(gp.curIdx!==gp.order.indexOf(pid))return alert('Not your turn.');
     const card=gp.inst[u];if(!card)return;
     const c=CARDS[card.cid];
-    if(!c.fortifyInstead||c.faction!=='synth')return alert('This card has no Fortify ability.');
+    if(!c.hasFortifyResponse||c.faction!=='synth')return alert('This card does not have the Response \u2461: Fortify ability.');
     if(gp.p[pid].coins<2)return alert('Need 2 coins to Fortify.');
     const hosts=gp.p[pid].board.concat([gp.p[pid].boss]).filter(au=>{
       if(!au||au===u)return false;
