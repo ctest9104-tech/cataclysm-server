@@ -1,4 +1,4 @@
-/* Cataclysm Arcade — Pre built deck library. */
+/* Cataclysm Arcade. */
 window.CATA_PRESET_DECKS = [
   {
     "id": "kiritos-choice",
