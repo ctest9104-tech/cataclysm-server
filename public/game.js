@@ -1,4 +1,4 @@
-/* CATACLYSM ARCADE Community Project Not affiliated with Mothership Games just a splice of TCG codes with added mechanics */
+/* CATACLYSM ARCADE Community Project */
 const SUPABASE_URL='https://mhvtcztuusjuzdjamnfo.supabase.co';
 const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1odnRjenR1dXNqdXpkamFtbmZvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4MzE1MDUsImV4cCI6MjA5NzQwNzUwNX0.b7fq9uditGv3rabTvYeAyGxJxhSAmoVK0TpyfuRBass';
 let _db=null;
@@ -74,24 +74,102 @@ function ingestCard(o){
   let scanText = c.text || '';
   const tokenStart = scanText.search(/Create\s[^.]{0,80}\btoken\b/i);
   if (tokenStart >= 0) scanText = scanText.slice(0, tokenStart);
-  /* Quoted segments (curly or straight) also typically wrap token-rules — strip those too */
-  scanText = scanText.replace(/"[^"]*"/g, '').replace(/\u201C[^\u201D]*\u201D/g, '');
-  scanText += ' ' + (c.keywords||[]).join(' ');
+  /* Strip parenthetical explanations like "(This must always be attacked first)" — they
+     describe what a keyword does, not declare a new one. */
+  const explainStripped = scanText.replace(/\([^)]*\)/g, '');
+  /* Strip quoted segments — those are token rule text in some cards */
+  const cleanedForDeclaration = explainStripped.replace(/"[^"]*"/g, '').replace(/\u201C[^\u201D]*\u201D/g, '');
 
-  const text = scanText;
-  const lowText = text.toLowerCase();
-  /* Armor N - parse number after "Armor" */
-  const armorMatch=text.match(/Armor\s+(\d+)/i);
-  if(armorMatch){ c.armor=Number(armorMatch[1]); if(!c.keywords.includes('Armor'))c.keywords.push('Armor'); }
-  if(/\bDetermination\b/.test(text)){ c.determination=true; if(!c.keywords.includes('Determination'))c.keywords.push('Determination'); }
-  if(/\bPhantasmal\b/.test(text)){ c.canPhantasmal=true; if(!c.keywords.includes('Phantasmal')&&/be(comes?|come)\s+Phantasmal/i.test(text))c.keywords.push('Phantasmal'); }
-  if(/\bAgility\b/.test(text)&&!c.keywords.includes('Agility')){ c.keywords.push('Agility'); }
-  if(/\bStealthy\b/.test(text)&&!c.keywords.includes('Stealthy')){ c.keywords.push('Stealthy'); }
-  if(/\bEnforcer\b/.test(text)&&!c.keywords.includes('Enforcer')){ c.keywords.push('Enforcer'); }
-  if(/\bFortify\b/.test(text)){ c.fortifyInstead=true; if(!c.keywords.includes('Fortify'))c.keywords.push('Fortify'); }
-  if(/\bBlock\b/.test(text)&&!c.keywords.includes('Block')){ c.keywords.push('Block'); }
-  if(/can attack as though.*(?:do(?:es)? not|do(?:es)?n['\u2019]?t) have Enforcer/i.test(text)){ c.atkFlags=c.atkFlags||{}; c.atkFlags.ignoreEnforcer=true; }
-  if(/can.t be blocked/i.test(text)){ c.atkFlags=c.atkFlags||{}; c.atkFlags.unblockable=true; }
+  /* Declaration detector: a keyword is DECLARED (not merely referenced) when it appears
+     as the first word of a sentence, followed by punctuation/space/end-of-sentence.
+     Rejects "Whenever an Enforcer Fighter dies...", "gains Agility", "as though no Stealthy", etc. */
+  function declaresKw(text, kw) {
+    const sentences = text.split(/[.!?\n]+/).map(s => s.trim()).filter(s => s.length > 0);
+    for (const s of sentences) {
+      const re = new RegExp('^' + kw + '\\b');
+      if (!re.test(s)) continue;
+      const rest = s.slice(kw.length).trim();
+      /* Reject "<kw> Fighter/Boss/ally/allies/on" — the keyword is being used as an adjective */
+      if (/^(Fighter|Fighters|Boss|Bosses|ally|allies|on)\b/.test(rest)) continue;
+      return true;
+    }
+    return false;
+  }
+
+  c.keywords = c.keywords || [];
+
+  /* === SANITIZE c.keywords against text-context inaccuracies in card data === */
+  /* (1) WEAPONS never "have" a Fighter-keyword; they GRANT one via wielding.
+     If a weapon has Agility/Block/Enforcer/Stealthy/Fortify/Determination in
+     keywords, convert that into c.grantsKeyword (the wielder gets it). */
+  if (c.type === 'weapon') {
+    const grantable = ['Agility','Block','Enforcer','Stealthy','Fortify','Determination'];
+    const grantsList = [];
+    c.keywords = c.keywords.filter(k => {
+      if (grantable.includes(k)) { grantsList.push(k); return false; }
+      return true;
+    });
+    if (grantsList.length) {
+      /* Engine reads c.grantsKeyword as a single kw or array via instSummary hasWieldedAgility, etc. */
+      if (grantsList.includes('Agility')) c.grantsKeyword = 'agility';
+      /* Block grants on weapons are wired via grantsActivated in cards-abilities.js (Makeshift Shield, Swiftpack 1999) */
+    }
+  }
+
+  /* (2) CONDITIONAL keywords ("as long as ... has KW", "while ... has KW", "if ... has KW")
+     should NOT be static keywords. Strip them so they're only granted via dynamicKeyword. */
+  const conditionalPatterns = {
+    'Agility':       /(?:as\s+long\s+as|while|if)\s[^.]{1,80}\b(?:has|have|gains?)\s+Agility\b/i,
+    'Enforcer':      /(?:as\s+long\s+as|while|if)\s[^.]{1,80}\b(?:has|have|gains?)\s+Enforcer\b/i,
+    'Stealthy':      /(?:as\s+long\s+as|while|if)\s[^.]{1,80}\b(?:has|have|gains?)\s+Stealthy\b/i,
+    'Determination': /(?:as\s+long\s+as|while|if)\s[^.]{1,80}\b(?:has|have|gains?)\s+Determination\b/i,
+    'Block':         /(?:as\s+long\s+as|while|if)\s[^.]{1,80}\b(?:has|have|gains?)\s+Block\b/i
+  };
+  /* Also catch the "X has KW as long as ..." inverted form */
+  const conditionalPatterns2 = {
+    'Agility':       /\bhas\s+Agility\b[^.]{0,80}\b(?:as\s+long\s+as|while|when|if)\b/i,
+    'Enforcer':      /\bhas\s+Enforcer\b[^.]{0,80}\b(?:as\s+long\s+as|while|when|if)\b/i,
+    'Stealthy':      /\bhas\s+Stealthy\b[^.]{0,80}\b(?:as\s+long\s+as|while|when|if)\b/i,
+    'Determination': /\bhas\s+Determination\b[^.]{0,80}\b(?:as\s+long\s+as|while|when|if)\b/i,
+    'Block':         /\bhas\s+Block\b[^.]{0,80}\b(?:as\s+long\s+as|while|when|if)\b/i
+  };
+  Object.keys(conditionalPatterns).forEach(kw => {
+    if (!c.keywords.includes(kw)) return;
+    if (conditionalPatterns[kw].test(c.text || '') || conditionalPatterns2[kw].test(c.text || '')) {
+      c.keywords = c.keywords.filter(k => k !== kw);
+      c._conditionalKeywords = c._conditionalKeywords || [];
+      c._conditionalKeywords.push(kw);
+    }
+  });
+
+  /* Armor N — special case, captures the number */
+  const armorMatch = cleanedForDeclaration.match(/(?:^|[.!?\n]\s*)Armor\s+(\d+)/);
+  if (armorMatch) {
+    c.armor = Number(armorMatch[1]);
+    if (!c.keywords.includes('Armor')) c.keywords.push('Armor');
+  }
+  /* Other simple keyword declarations */
+  ['Enforcer','Stealthy','Agility','Block','Fortify','Determination'].forEach(kw => {
+    if (declaresKw(cleanedForDeclaration, kw) && !c.keywords.includes(kw)) {
+      c.keywords.push(kw);
+    }
+  });
+  /* Side-effect flags driven by keyword presence */
+  if (c.keywords.includes('Determination')) c.determination = true;
+  if (c.keywords.includes('Fortify')) c.fortifyInstead = true;
+  /* Phantasmal — only flag canPhantasmal if it's truly a passive (rare). Activated abilities
+     that "become Phantasmal" don't make the card passively Phantasmal. */
+  if (declaresKw(cleanedForDeclaration, 'Phantasmal')) {
+    c.canPhantasmal = true;
+    if (!c.keywords.includes('Phantasmal')) c.keywords.push('Phantasmal');
+  }
+  /* Atk-flag detection (these ARE references-with-meaning, not declarations) */
+  if (/can attack as though.*(?:do(?:es)? not|do(?:es)?n['\u2019]?t) have Enforcer/i.test(c.text || '')) {
+    c.atkFlags = c.atkFlags || {}; c.atkFlags.ignoreEnforcer = true;
+  }
+  if (/can.t be blocked/i.test(c.text || '')) {
+    c.atkFlags = c.atkFlags || {}; c.atkFlags.unblockable = true;
+  }
 
   if(o.id==='render-mq83vajo')c.diesEndOfLevel=true;
   if(o.id==='render-mq838ccz')c.createsTempToken=true;
@@ -193,6 +271,13 @@ function diffinCanAttack(gp,uid){
   return myFighters(gp,i.owner).some(u=>gp.inst[u].hp>=5);
 }
 
+/* Joe Strummage: "Joe can only attack if you have one or fewer cards in hand." */
+function joeCanAttack(gp,uid){
+  const i=gp.inst[uid];if(!i)return true;
+  const c=CARDS[i.cid];if(!c||c.id!=='render-mq8347x5')return true;
+  return gp.p[i.owner].hand.length<=1;
+}
+
 window.rollDieManual=function(sides){
   sides=sides||6;
   rollDieVisible(sides,'Manual roll (d'+sides+')',(r)=>{
@@ -286,26 +371,29 @@ function instSummary(gp,uid){
 
     if(c.dynamicAtk){
       const dv=c.dynamicAtk(gp,uid);
-      if(dv!==undefined&&dv!==null)atk=dv+(i.counters&&i.counters.atk||0)+(i.tempAtk||0);
-      else atk=(c.atk||0)+(i.counters&&i.counters.atk||0)+(i.tempAtk||0);
+      if(dv!==undefined&&dv!==null)atk=(Number(dv)||0)+(Number(i.counters&&i.counters.atk)||0)+(Number(i.tempAtk)||0);
+      else atk=(Number(c.atk)||0)+(Number(i.counters&&i.counters.atk)||0)+(Number(i.tempAtk)||0);
     } else {
-      atk=(c.atk||0)+(i.counters&&i.counters.atk||0)+(i.tempAtk||0);
+      atk=(Number(c.atk)||0)+(Number(i.counters&&i.counters.atk)||0)+(Number(i.tempAtk)||0);
     }
-    if(c.dynamicAtkBonus)atk+=c.dynamicAtkBonus(gp,uid);
+    if(c.dynamicAtkBonus)atk+=(Number(c.dynamicAtkBonus(gp,uid))||0);
     (i.wielded||[]).forEach(wu=>{
       const wc=CARDS[gp.inst[wu].cid];
-      atk+=weaponAtk(gp,wu);
+      atk+=(Number(weaponAtk(gp,wu))||0);
 
-      if(wc&&wc.atkBonusForWielder)atk+=(wc.atkBonusForWielder(gp,uid)||0);
+      if(wc&&wc.atkBonusForWielder)atk+=(Number(wc.atkBonusForWielder(gp,uid))||0);
     });
 
     if(i.owner&&gp.p[i.owner]){
       (gp.p[i.owner].board.concat([gp.p[i.owner].boss])).forEach(au=>{
         if(!au||au===uid)return;const ai=gp.inst[au];if(!ai)return;const ac=CARDS[ai.cid];
-        if(ac&&ac.staticBuff)atk+=(ac.staticBuff(gp,uid,au)||0);
+        if(ac&&ac.staticBuff)atk+=(Number(ac.staticBuff(gp,uid,au))||0);
       });
     }
   }
+  /* Final safety: never let atk be non-finite */
+  if(!Number.isFinite(atk))atk=0;
+  atk=Math.max(0,atk);
 
   const gained=(i._gainedKw&&Object.keys(i._gainedKw).filter(k=>i._gainedKw[k]===gp.level))||[];
   const allKw=(c.keywords||[]).slice();
@@ -398,7 +486,12 @@ function destroyInstance(gp,uid,opts){
   const i=gp.inst[uid];if(!i)return;const c=CARDS[i.cid];if(!c)return;const pid=i.owner;
   if(c.fortifyInstead&&!(opts&&opts.skipFortify)){
     const cands=(gp.p[pid].board.concat([gp.p[pid].boss])).filter(u=>u&&u!==uid&&gp.inst[u]&&!gp.inst[u].fortifiedUnder&&(gp.inst[u].kind==='fighter'||gp.inst[u].kind==='boss')&&gp.inst[u].hp>0);
-    if(cands.length){const t=cands[0];gp.inst[t].maxHp+=i.maxHp;gp.inst[t].hp+=i.maxHp;i.fortifiedUnder=t;gp.p[pid].board=gp.p[pid].board.filter(x=>x!==uid);log(gp,c.name+' Fortifies under '+CARDS[gp.inst[t].cid].name+'.');return;}
+    if(cands.length){const t=cands[0];gp.inst[t].maxHp+=i.maxHp;gp.inst[t].hp+=i.maxHp;i.fortifiedUnder=t;gp.p[pid].board=gp.p[pid].board.filter(x=>x!==uid);log(gp,c.name+' Fortifies under '+CARDS[gp.inst[t].cid].name+'.');
+      /* Global Fortify trigger (Mahna, Soft Speaker) */
+      allBoard(gp).forEach(u=>{const ii=gp.inst[u];if(!ii)return;const cc=CARDS[ii.cid];
+        if(cc&&cc.onAnyFortify)cc.onAnyFortify(gp,ii.owner,{hostUid:t,fortifiedUid:uid});
+      });
+      return;}
   }
   showDestroyEffect(uid);
   if(i.kind==='fighter'){
@@ -420,7 +513,12 @@ function destroyInstance(gp,uid,opts){
 }
 function dealDamage(gp,uid,amt){
   const i=gp.inst[uid];if(!i||i.hp<=0)return;const c=CARDS[i.cid];if(!c)return;
-  let reduced=amt;
+  /* Defensive: coerce to a safe number. Anything non-numeric becomes 0 instead of NaN-corrupting HP. */
+  let reduced=Number(amt);
+  if(!Number.isFinite(reduced)||reduced<0){
+    if(amt!==0&&amt!==null&&amt!==undefined)console.warn('dealDamage: non-numeric amt',amt,'-> 0');
+    reduced=0;
+  }
 
   /* Armor on card OR on any wielded weapon (Makeshift Shield's grantsArmor:1) */
   let armorTotal=c.armor||0;
@@ -821,6 +919,7 @@ window.confirmAttack=async function(defUid){
     if(gp.curIdx!==gp.order.indexOf(pid))return alert('Not your turn.');
     if(!canAct(gp,atkUid))return alert('That unit can\'t act again this level.');
     if(!diffinCanAttack(gp,atkUid))return alert('Diffin can only attack if you have a Fighter with 5+ Health on your team.');
+    if(!joeCanAttack(gp,atkUid))return alert('Joe Strummage can only attack if you have 1 or fewer cards in hand.');
     /* Joe Strummage: can only attack if you have 1 or fewer cards in hand */
     if(CARDS[gp.inst[atkUid].cid].id==='render-mq8347x5'&&gp.p[pid].hand.length>1){
       return alert('Joe Strummage can only attack if you have 1 or fewer cards in hand.');
@@ -1163,6 +1262,10 @@ window.fortifyFromHand=async function(u){
         g.p[pid].hand=g.p[pid].hand.filter(x=>x!==u);
         g.inst[u].fortifiedUnder=host;
         log(g,c.name+' Fortifies from hand under '+CARDS[hostI.cid].name+' (+'+addHp+' HP).');
+        /* Global Fortify trigger (Mahna, Soft Speaker) */
+        allBoard(g).forEach(au=>{const ai=g.inst[au];if(!ai)return;const ac=CARDS[ai.cid];
+          if(ac&&ac.onAnyFortify)ac.onAnyFortify(g,ai.owner,{hostUid:host,fortifiedUid:u});
+        });
       });
     gp.p[pid].hasActed=true;
     if(!gp.pending)nextTurn(gp);
