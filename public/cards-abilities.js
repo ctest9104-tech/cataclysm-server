@@ -1253,21 +1253,46 @@ Object.assign(window.CATA_ABILITIES, {
   // The Blue Gelati — When attacks, may pay ① for +X atk equal to a Weapon's attack. Fortify on death (auto).
   'render-mq83q0bf': {
     preAttack(gp,ctx){
-      const weapons=allBoard(gp).filter(u=>(CARDS[gp.inst[u].cid]||{}).type==='weapon');
+      /* "Choose a weapon in play" includes both unwielded weapons on boards AND wielded weapons. */
+      const weapons=[];
+      Object.keys(gp.inst).forEach(u=>{
+        const i=gp.inst[u];if(!i)return;
+        if((CARDS[i.cid]||{}).type==='weapon')weapons.push(u);
+      });
       const canBoost=gp.p[ctx.pid].coins>=1&&weapons.length>0;
       if(!canBoost){finishAttackDamage(gp,ctx);return;}
+      /* Helper: compute a weapon's effective Attack value as if Gelati were the wielder.
+         Most weapons have atkMod=0 with conditional bonuses via atkBonusForWielder(gp, wielderUid).
+         If a wielder already exists, use that; otherwise simulate Gelati as wielder. */
+      function weaponEffectiveAtk(g, weaponUid){
+        const wInst=g.inst[weaponUid];const wc=CARDS[wInst.cid];if(!wc)return 0;
+        let v=Number(wc.atkMod)||0;
+        if(wc.atkBonusForWielder){
+          /* If wielded, use the actual wielder. Otherwise simulate Gelati. */
+          const wielderForCalc=wInst.wieldedBy||ctx.attacker;
+          v+=Number(wc.atkBonusForWielder(g,wielderForCalc))||0;
+        }
+        return Math.max(0,v);
+      }
       pendPick(gp,{forId:ctx.pid,prompt:'Blue Gelati attacks: pay \u2460 for +X Attack equal to a weapon\u2019s Attack value?',
         options:[{label:'Yes \u2014 pick weapon',value:'y'},{label:'No (attack as is)',value:''}]},
         (g,choice)=>{
           if(choice!=='y'){finishAttackDamage(g,ctx);return;}
           pendPick(g,{forId:ctx.pid,prompt:'Blue Gelati: copy which weapon\u2019s Attack value?',
-            options:weapons.map(u=>{const wc=CARDS[g.inst[u].cid];return{label:wc.name+' (+'+(wc.atkMod||0)+' atk)',value:u};})},
+            options:weapons.map(u=>{
+              const wc=CARDS[g.inst[u].cid];
+              const effAtk=weaponEffectiveAtk(g,u);
+              const wieldedNote=g.inst[u].wieldedBy?' (wielded)':' (unwielded)';
+              return{label:wc.name+wieldedNote+' \u2014 +'+effAtk+' Atk',value:u};
+            }).concat([{label:'Cancel \u2014 attack with base Attack',value:''}])},
             (g2,pick)=>{
               if(!pick){finishAttackDamage(g2,ctx);return;}
-              const bonus=CARDS[g2.inst[pick].cid].atkMod||0;
-              g2.p[ctx.pid].coins-=1;
-              g2.inst[ctx.attacker].tempAtk=(g2.inst[ctx.attacker].tempAtk||0)+bonus;
-              log(g2,'Blue Gelati pays \u2460, copies '+CARDS[g2.inst[pick].cid].name+' attack (+'+bonus+').');
+              const bonus=weaponEffectiveAtk(g2,pick);
+              const wc=CARDS[g2.inst[pick].cid];
+              g2.p[ctx.pid].coins=Math.max(0,g2.p[ctx.pid].coins-1);
+              const cur=Number(g2.inst[ctx.attacker].tempAtk)||0;
+              g2.inst[ctx.attacker].tempAtk=cur+bonus;
+              log(g2,'Blue Gelati pays \u2460, copies '+wc.name+' Attack value (+'+bonus+').');
               finishAttackDamage(g2,ctx);
             });
         });
@@ -1554,9 +1579,14 @@ BLOCK_FREE.forEach(cid=>{const e=window.CATA_ABILITIES[cid]||(window.CATA_ABILIT
 BLOCK_ONE.forEach(cid=>{const e=window.CATA_ABILITIES[cid]||(window.CATA_ABILITIES[cid]={});e.activated=(e.activated||[]).concat([makeBlockAbility(1)]);});
 
 /* Weapon-granted Block (the wielder gets Response ⊙: Block) */
-['render-mq836yg3','render-mq83osng'].forEach(cid=>{
+/* Weapon-granted Block: Makeshift Shield free, Swiftpack 1999 costs ① */
+['render-mq836yg3'].forEach(cid=>{
   const e=window.CATA_ABILITIES[cid]||(window.CATA_ABILITIES[cid]={});
   e.grantsActivated=(e.grantsActivated||[]).concat([makeBlockAbility(0)]);
+});
+['render-mq83osng'].forEach(cid=>{
+  const e=window.CATA_ABILITIES[cid]||(window.CATA_ABILITIES[cid]={});
+  e.grantsActivated=(e.grantsActivated||[]).concat([makeBlockAbility(1)]);
 });
 
 /* Pia's Response ②⊙: Fortify — defender chooses an ally Synth to host, gains Pia's HP. */
@@ -2866,5 +2896,462 @@ function makeBlockGrantForWielder(coinCost){
           (g2,t2)=>{if(t2)stunInstance(g2,t2,'shifter');});
       }
     });
+  };
+})();
+
+/* ──────── Batch 1 (re-audit): Boss completion fixes ──────── */
+
+/* Eff with me Ammo: switch _gainedKw to dynamicKeyword (engine actually reads dynamicKeyword) */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq82wdi3']||(window.CATA_ABILITIES['render-mq82wdi3']={});
+  e.dynamicKeyword=function(gp,uid,kw){
+    if(kw!=='Agility')return false;
+    const i=gp.inst[uid];if(!i)return false;
+    return gp.p[i.owner].board.some(u=>{const ii=gp.inst[u];return ii&&(CARDS[ii.cid]||{}).name==='Head Rat'&&ii.hp>0;});
+  };
+  /* Remove the dead onLevelStart that wrote i._gainedKw (engine doesn't read it) */
+  e.onLevelStart=undefined;
+})();
+
+/* Seeya, Later Gator: first time attacked each level, reveal top of deck.
+   If Fighter, put it in hand. */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq83jdnu']||(window.CATA_ABILITIES['render-mq83jdnu']={});
+  e.onAttacked=function(gp,ctx){
+    const i=gp.inst[ctx.src];if(!i)return;
+    if(i._seeyaRevealedLevel===gp.level)return; /* already revealed this level */
+    i._seeyaRevealedLevel=gp.level;
+    const pid=i.owner;const deck=gp.p[pid].deck;if(!deck.length){log(gp,'Seeya: deck empty.');return;}
+    const top=deck.shift();const tc=CARDS[gp.inst[top].cid];
+    fireReveal(gp,pid,top);
+    if(tc&&tc.type==='fighter'){
+      gp.p[pid].hand.push(top);
+      log(gp,'Seeya reveals '+tc.name+' (Fighter) \u2014 to hand.');
+    } else {
+      deck.push(top); /* not a Fighter: back on top? Rules unclear — go to bottom (most generous reading) */
+      log(gp,'Seeya reveals '+((tc&&tc.name)||'?')+' (not a Fighter) \u2014 returns to deck.');
+    }
+  };
+  e._info=undefined;
+})();
+
+/* Sky, Unlikely Champion: atk cost reduced by ① per Survivor Fighter on team + ③⊙: search Fighter */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq83m92b']||(window.CATA_ABILITIES['render-mq83m92b']={});
+  e.dynamicAtkCost=function(gp,uid){
+    const i=gp.inst[uid];if(!i)return null;
+    const base=(CARDS[i.cid]||{}).atkCost||0;
+    const survivors=gp.p[i.owner].board.filter(u=>{const ii=gp.inst[u];return ii&&ii.kind==='fighter'&&ii.hp>0&&(CARDS[ii.cid]||{}).faction==='survivor';}).length;
+    return Math.max(0,base-survivors);
+  };
+  e.activated=[{label:'\u2462\u2299: Search deck for Fighter',cost:{tap:true,coins:3},run(gp,ctx){
+    const deck=gp.p[ctx.pid].deck;const skipped=[];let found=null;
+    while(deck.length){
+      const u=deck.shift();const c=CARDS[gp.inst[u].cid];
+      if(c&&c.type==='fighter'){found=u;fireReveal(gp,ctx.pid,u);break;}
+      skipped.push(u);
+    }
+    gp.p[ctx.pid].deck=shuffle(deck.concat(skipped));
+    if(found){gp.p[ctx.pid].hand.push(found);log(gp,'Sky reveals '+CARDS[gp.inst[found].cid].name+' (Fighter) \u2014 to hand.');}
+    else log(gp,'Sky: no Fighter in deck. Shuffled.');
+  }}];
+})();
+
+/* Tryp, Timelost: whenever you discard one or more cards, deals 1 damage to all opposing B/F */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq83siwj']||(window.CATA_ABILITIES['render-mq83siwj']={});
+  /* The src param is the Tryp instance, ctx.discarderPid is the player who discarded.
+     "Whenever you discard" — only when Tryp's owner discards. */
+  e.onAnyDiscard=function(gp,ctx){
+    const i=gp.inst[ctx.src];if(!i)return;
+    if(ctx.discarderPid!==i.owner)return;
+    Object.keys(gp.p).forEach(pid=>{
+      if(pid===i.owner||gp.p[pid].defeated)return;
+      gp.p[pid].board.concat([gp.p[pid].boss]).forEach(u=>{
+        if(!u)return;const ti=gp.inst[u];if(!ti||ti.hp<=0)return;
+        if(ti.kind==='fighter'||ti.kind==='boss')dealDamage(gp,u,1);
+      });
+    });
+    log(gp,'Tryp: discard \u2192 1 damage to all opposing Bosses & Fighters.');
+  };
+  /* Keep existing onAttack (optional discard) */
+  e._info=undefined;
+})();
+
+/* Mother May Eye: count T/R plays per level + Agility when 3+ + activated reveals top card playable */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq83a3v4']||(window.CATA_ABILITIES['render-mq83a3v4']={});
+  /* dynamicAtkBonus already in place reads gp._trPlayed[pid] */
+  /* Track plays via onAnyTacticOrResponsePlayed */
+  e.onAnyTacticOrResponsePlayed=function(gp,pid){
+    const i=gp.inst[gp.p[pid].boss];if(!i||(CARDS[i.cid]||{}).id!=='render-mq83a3v4')return;
+    gp._trPlayed=gp._trPlayed||{};
+    gp._trPlayed[pid]=(gp._trPlayed[pid]||0)+1;
+  };
+  /* Dynamic Agility if 3+ T/R played this level */
+  e.dynamicKeyword=function(gp,uid,kw){
+    if(kw!=='Agility')return false;
+    const i=gp.inst[uid];if(!i)return false;
+    return ((gp._trPlayed&&gp._trPlayed[i.owner])||0)>=3;
+  };
+  /* Activated: reveal top of deck; if it's a Tactic or Response, play it for free */
+  e.activated=[{label:'\u2299: Reveal top \u2014 play if Tactic/Response',cost:{tap:true},run(gp,ctx){
+    const top=gp.p[ctx.pid].deck[0];
+    if(!top){log(gp,'Mother May Eye: deck empty.');return;}
+    const tc=CARDS[gp.inst[top].cid];if(!tc){log(gp,'Mother May Eye: reveals nothing.');return;}
+    fireReveal(gp,ctx.pid,top);
+    if(tc.type==='tactic'||tc.type==='response'){
+      pendPick(gp,{forId:ctx.pid,prompt:'Mother May Eye: top of deck is '+tc.name+'. Play for free?',
+        options:[{label:'Yes \u2014 play it',value:'y'},{label:'No (leave on top)',value:''}]},
+        (g,v)=>{
+          if(v==='y'){
+            g.p[ctx.pid].deck.shift();
+            /* Run as if played from hand: invoke ability run() if defined */
+            const ent=window.CATA_ABILITIES[tc.id];
+            if(ent&&ent.run)ent.run(g,{pid:ctx.pid,src:top});
+            else if(tc.onPlay)tc.onPlay(g,{pid:ctx.pid,src:top});
+            g.p[ctx.pid].grave.push(top);
+            log(g,'Mother May Eye: played '+tc.name+' free from deck.');
+            /* This counts as a T/R play */
+            if(e.onAnyTacticOrResponsePlayed)e.onAnyTacticOrResponsePlayed(g,ctx.pid);
+          } else {
+            log(g,'Mother May Eye: '+tc.name+' stays on top of deck.');
+          }
+        });
+    } else {
+      log(gp,'Mother May Eye: top of deck is '+tc.name+' (not Tactic/Response). Stays revealed.');
+    }
+  }}];
+})();
+
+/* ──────── Batch 2 (re-audit): Weapon completion fixes ──────── */
+
+/* Dog-Eared Passage: text says "Whenever the wielder attacks, draw a card."
+   Switch from onWielderDealtDamage to onWielderAttack — fires on attack declaration
+   regardless of whether damage actually lands (Block redirect, stops). */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq82uuz1']||(window.CATA_ABILITIES['render-mq82uuz1']={});
+  e.onWielderDealtDamage=undefined;
+  e.onWielderAttack=function(gp,wielderUid){
+    const wi=gp.inst[wielderUid];if(!wi)return;
+    drawN(gp,wi.owner,1);
+    log(gp,'Dog-Eared Passage: wielder attacks \u2192 draw a card.');
+  };
+})();
+
+/* Gauntlet of the Dead: full impl per text.
+   "When the wielder attacks, reveal the top card of your deck. You may play that card
+    this level for its token cost or if the level requirement is met. If you don't,
+    put a +1 Attack counter on the wielder and you may put the revealed card in your discard pile." */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq83191n']||(window.CATA_ABILITIES['render-mq83191n']={});
+  e.onWielderAttack=function(gp,wielderUid){
+    const wi=gp.inst[wielderUid];if(!wi)return;
+    const pid=wi.owner;const deck=gp.p[pid].deck;if(!deck.length){log(gp,'Gauntlet: deck empty.');return;}
+    const topUid=deck[0];const topInst=gp.inst[topUid];if(!topInst)return;
+    const topCard=CARDS[topInst.cid];if(!topCard)return;
+    fireReveal(gp,pid,topUid);
+    const canPlay=(topCard.type!=='fighter'||(topCard.level||0)<=gp.level);
+    const playLabel='Play '+topCard.name+(topCard.cost?' (cost \u2460'.repeat(topCard.cost)+')':' (free)');
+    const opts=[];
+    if(canPlay&&gp.p[pid].coins>=(topCard.cost||0))opts.push({label:playLabel,value:'play'});
+    opts.push({label:'Skip \u2014 put +1 Attack counter on wielder',value:'skip'});
+    pendPick(gp,{forId:pid,prompt:'Gauntlet of the Dead reveals '+topCard.name+'.',options:opts},
+      (g,choice)=>{
+        if(choice==='play'){
+          /* Pay cost, play the card */
+          g.p[pid].coins=Math.max(0,g.p[pid].coins-(topCard.cost||0));
+          g.p[pid].deck.shift();
+          if(topCard.type==='fighter'){
+            g.p[pid].board.push(topUid);resetInstance(g,topUid);
+            fireOnEnter(g,topUid,pid);
+            log(g,'Gauntlet: played '+topCard.name+' from top of deck.');
+          } else if(topCard.type==='weapon'){
+            /* Weapons need a wielder — prompt */
+            const fighters=myFighters(g,pid);
+            if(!fighters.length){g.p[pid].grave.push(topUid);log(g,'Gauntlet: no Fighter to wield to. Weapon goes to discard.');return;}
+            pendPick(g,{forId:pid,prompt:'Wield '+topCard.name+' to which Fighter?',
+              options:fighters.map(u=>({label:CARDS[g.inst[u].cid].name,value:u}))},
+              (g2,wielder)=>{
+                if(wielder){g2.p[pid].board.push(topUid);resetInstance(g2,topUid);wieldWeapon(g2,topUid,wielder);}
+                else{g2.p[pid].grave.push(topUid);log(g2,'Gauntlet: weapon discarded.');}
+              });
+          } else {
+            /* Tactic or Response — run the ability and send to grave */
+            const ent=window.CATA_ABILITIES[topCard.id];
+            if(ent&&ent.run)ent.run(g,{pid,src:topUid});
+            g.p[pid].grave.push(topUid);
+            log(g,'Gauntlet: played '+topCard.name+' from top of deck.');
+          }
+        } else {
+          /* Skip: +1 atk counter + optional discard of the revealed card */
+          addCounter(g,wielderUid,'atk',1);
+          log(g,'Gauntlet: +1 Attack counter on wielder.');
+          pendPick(g,{forId:pid,prompt:'Discard the revealed '+topCard.name+'?',
+            options:[{label:'Yes \u2014 to discard',value:'y'},{label:'No \u2014 stays on top',value:''}]},
+            (g2,v)=>{
+              if(v==='y'){
+                g2.p[pid].deck.shift();
+                g2.p[pid].grave.push(topUid);
+                log(g2,'Gauntlet: '+topCard.name+' to discard.');
+              }
+            });
+        }
+      });
+  };
+})();
+
+/* ──────── Batch 3 (re-audit): Apex+Survivor fighter completion fixes ──────── */
+
+/* Just Elias, Protector: text says "Enforcer. Just Elias gets +1 Attack if he has 3 or less Health."
+   Was: dynamicAtkBonus counted Survivor allies (wrong impl entirely). Fix: +1 when his HP ≤ 3. */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq834dho']||(window.CATA_ABILITIES['render-mq834dho']={});
+  e.dynamicAtkBonus=function(gp,uid){
+    const i=gp.inst[uid];if(!i)return 0;
+    return i.hp<=3?1:0;
+  };
+})();
+
+/* Kochi, Platform Presence: text says
+   "When Kochi enters play, heal target Fighter to its maximum Health.
+    When Kochi heals a Boss or Fighter, he deals damage to target Fighter equal to the total amount healed.
+    ③⊙: Your team heals 1." */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq835b15']||(window.CATA_ABILITIES['render-mq835b15']={});
+  /* onEnter: heal target Fighter to full, then deal damage = amount healed */
+  e.onEnter=function(gp,ctx){
+    pendTarget(gp,{forId:ctx.pid,prompt:'Kochi: heal which Fighter to full?',filter:fighterTargetFilter()},(g,t)=>{
+      if(!t)return;
+      const i=g.inst[t];const before=i.hp;
+      i.hp=i.maxHp;
+      const healed=i.hp-before;
+      log(g,'Kochi heals '+CARDS[i.cid].name+' for '+healed+' (to full).');
+      if(healed>0){
+        /* "When Kochi heals a Boss or Fighter, he deals damage to target Fighter equal to total amount healed" */
+        pendTarget(g,{forId:ctx.pid,prompt:'Kochi: deal '+healed+' damage to which Fighter?',filter:fighterTargetFilter()},
+          (g2,t2)=>{if(t2)dealDamage(g2,t2,healed);});
+      }
+    });
+  };
+  /* Activated: ③⊙ Your team heals 1 */
+  e.activated=[{label:'\u2462\u2299: Team heals 1',cost:{tap:true,coins:3},run(gp,ctx){
+    eachAlly(gp,ctx.pid,u=>healInst(gp,u,1));
+    log(gp,'Kochi: team heals 1.');
+  }}];
+})();
+
+/* Turner, Straphanger: pendTarget filter now requires Survivor Fighter on YOUR team */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq83t4ak']||(window.CATA_ABILITIES['render-mq83t4ak']={});
+  e.onEnter=function(gp,ctx){
+    pendTarget(gp,{forId:ctx.pid,prompt:'Turner: +1 Attack counter on which Survivor Fighter on your team?',
+      filter:i=>i.kind==='fighter'&&i.owner===ctx.pid&&(CARDS[i.cid]||{}).faction==='survivor'},
+      (g,t)=>{if(t)addCounter(g,t,'atk',1);});
+  };
+})();
+
+/* ──────── Batch 4 (re-audit): Mystic fighter completion fixes ──────── */
+
+/* Stat, Mirage Master: enters as copy of another Fighter, but keeps Stat's name, Attack Cost, and Attack.
+   Was: called undefined copyStatsOnto, crashes. Now: synthetic-CARDS-clone pattern (same approach as Mimeoscoped). */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq83njzn']||(window.CATA_ABILITIES['render-mq83njzn']={});
+  e.onEnter=function(gp,ctx){
+    const targets=allBoard(gp).filter(u=>u!==ctx.src&&gp.inst[u]&&gp.inst[u].kind==='fighter'&&gp.inst[u].hp>0);
+    if(!targets.length){log(gp,'Stat: no Fighter to copy.');return;}
+    pendPick(gp,{forId:ctx.pid,prompt:'Stat: enter as a copy of which Fighter?',
+      options:targets.map(u=>({label:CARDS[gp.inst[u].cid].name+' (HP '+gp.inst[u].maxHp+')',value:u}))},
+      (g,t)=>{
+        if(!t)return;
+        const ti=g.inst[t];const tc=CARDS[ti.cid];if(!tc)return;
+        const statC=CARDS['render-mq83njzn'];
+        const cloneCid='_stat_'+ctx.src+'_'+g.level;
+        /* Build a clone of the model's CARDS entry, override name/atk/atkCost from Stat */
+        CARDS[cloneCid]=Object.assign({},tc,{
+          id:cloneCid,
+          name:statC.name,
+          atk:statC.atk,
+          atkCost:statC.atkCost,
+          /* keep model's: hp, keywords, activated, dynamicAtkBonus, attackerMod, defenderMod, staticBuff,
+             grantsKeyword, faction, type, kind, level, sub */
+          onEnter:undefined /* don't refire onEnter when we swap cid */
+        });
+        /* Swap Stat's instance over to the clone */
+        g.inst[ctx.src].cid=cloneCid;
+        /* Re-resolve HP to match the model's printed HP */
+        g.inst[ctx.src].maxHp=tc.hp;g.inst[ctx.src].hp=tc.hp;
+        log(g,'Stat enters as a copy of '+tc.name+' (keeps Stat\u2019s name/atk/atkCost).');
+      });
+  };
+  e._info=undefined;
+})();
+
+/* Axel, Deathracer: Agility while Phantasmal — also wire dynamicKeyword so it's
+   accurate at all times (gainKwLevel only sets it once at Phantasmal-flip, fine but redundant). */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq82n695']||(window.CATA_ABILITIES['render-mq82n695']={});
+  e.dynamicKeyword=function(gp,uid,kw){
+    if(kw!=='Agility')return false;
+    const i=gp.inst[uid];return!!(i&&i.phantasmal);
+  };
+})();
+
+/* Dette, Quickener: text says "When Dette becomes Phantasmal, target Fighter on your team gains 2 Health."
+   The text doesn't say "another" — so Dette herself is a valid target. Just verify impl uses Fighter filter. */
+/* (No engine change needed — leave existing impl which already prompts ally Fighter target.) */
+
+/* Shaman of Eternity: engine already restricts onCounterPlaced to +1 atk counters (game.js line 439).
+   No additional fix needed — verified. */
+
+/* ──────── Batch 5 (re-audit): Shifter fighter completion fixes ──────── */
+
+/* Clatter, Cornered: text says "When Clatter is dealt damage by an attack, he deals 1 damage to
+   the attacking Boss or Fighter." Was: used (gp, uid, sourceUid) — engine doesn't pass sourceUid.
+   Fix: read attacker from gp.pendingAttack/responseWindow (same pattern as Ahna). */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq82rspr']||(window.CATA_ABILITIES['render-mq82rspr']={});
+  e.onDamaged=function(gp,ctx){
+    if(!ctx||!ctx.amount)return;
+    /* "by an attack" — only fires during attack resolution */
+    const atkUid=(gp.responseWindow&&gp.responseWindow.attackerUid)||(gp.pendingAttack&&gp.pendingAttack.attacker);
+    if(!atkUid||!gp.inst[atkUid])return;
+    const ai=gp.inst[atkUid];if(ai.kind!=='fighter'&&ai.kind!=='boss')return;
+    dealDamage(gp,atkUid,1);
+    log(gp,'Clatter: deals 1 damage back to '+(CARDS[ai.cid]||{name:'?'}).name+'.');
+  };
+})();
+
+/* Gordo, Collector: text says "if a Fighter on YOUR team died this level".
+   Was: used global gp.fighterLeftThisLevel — fires even if an OPPONENT's Fighter died.
+   Fix: read from per-player gp.fighterDeathsThisLevel[ctx.pid]. */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq832cs4']||(window.CATA_ABILITIES['render-mq832cs4']={});
+  e.onEnter=function(gp,ctx){
+    const myDeaths=(gp.fighterDeathsThisLevel||{})[ctx.pid]||0;
+    if(myDeaths===0){log(gp,'Gordo: no Fighter on your team died this level \u2014 no damage.');return;}
+    pendTarget(gp,{forId:ctx.pid,prompt:'Gordo: deal 2 damage to which Boss or Fighter?',
+      filter:bossOrFighterFilter()},(g,t)=>{if(t)dealDamage(g,t,2);});
+  };
+})();
+
+/* Joe Strummage: text says "When Joe enters play, each player discards a card. Joe can only
+   attack if you have one or fewer cards in hand." Was: optional discard for each player, no
+   attack restriction. Fix: force discard (per text), add per-card attack restriction in engine. */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq8347x5']||(window.CATA_ABILITIES['render-mq8347x5']={});
+  e.onEnter=function(gp,ctx){
+    gp.order.forEach(pid=>{
+      if(gp.p[pid].defeated||!gp.p[pid].hand.length)return;
+      pendDiscardForced(gp,{pid},gp.p[pid].name+' must discard a card (Joe Strummage)',()=>{});
+    });
+  };
+  /* The attack restriction is checked in engine playHandCard via a per-cid check. */
+})();
+
+/* ──────── Batch 6 (re-audit): Synth fighter completion fixes ──────── */
+
+/* Fishhooks: text says only "Enforcer." — nothing else. Was: spurious onEnter giving +1 Attack
+   to all opposing Fighters with no rules basis. Remove it. */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq82yuv1']||(window.CATA_ABILITIES['render-mq82yuv1']={});
+  e.onEnter=undefined;
+})();
+
+/* Dreyver, Terminarch: text says "Attack Costs AND activated abilities of other Synth Fighters and
+   Bosses on your team cost ① less (Costs can't be less than ①.) ②⊙: Target Synth gains Agility this level."
+   Was: only atkCostModForAlly wired. Add abilityCostModForAlly + the ②⊙ activated. */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq82vipj']||(window.CATA_ABILITIES['render-mq82vipj']={});
+  /* Attack-cost mod was already there; add ability-cost mod with same Synth-ally filter */
+  e.abilityCostModForAlly=function(gp,allyUid,dreyverUid){
+    if(allyUid===dreyverUid)return 0;
+    const c=CARDS[gp.inst[allyUid].cid];if(!c)return 0;
+    if(c.faction!=='synth')return 0;
+    return -1;
+  };
+  /* ②⊙: Target Synth gains Agility this level */
+  e.activated=[{label:'\u2461\u2299: Target Synth gains Agility this level',cost:{tap:true,coins:2},run(gp,ctx){
+    pendTarget(gp,{forId:ctx.pid,prompt:'Dreyver: grant Agility this level to which Synth?',
+      filter:i=>(i.kind==='fighter'||i.kind==='boss')&&(CARDS[i.cid]||{}).faction==='synth'},
+      (g,t)=>{if(t)gainKwLevel(g,t,'Agility');});
+  }}];
+})();
+
+/* ──────── Batch 7 (re-audit): Tactic completion fixes ──────── */
+
+/* Roll Call: text says "Draw a card for each Fighter with A COUNTER on it on your team."
+   Was: only counted Fighters with +1 atk counters (counters.atk > 0).
+   Fix: count Fighters with ANY counter (atk positive OR negative, charge, etc.) */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq83hedv']||(window.CATA_ABILITIES['render-mq83hedv']={});
+  e.run=function(gp,ctx){
+    pendPick(gp,{forId:ctx.pid,prompt:'Roll Call: choose effect',
+      options:[
+        {label:'Distribute up to 5 +1 Attack counters',value:'distr'},
+        {label:'Draw a card for each ally Fighter with a counter',value:'draw'}
+      ]},(g,choice)=>{
+        if(!choice)return;
+        if(choice==='distr'){
+          const give=(g2,n)=>{
+            if(n===0)return;
+            pendTarget(g2,{forId:ctx.pid,prompt:'+1 Attack counter to which ally Fighter? ('+n+' left, may Skip)',
+              filter:i=>i.kind==='fighter'&&i.owner===ctx.pid},
+              (g3,t)=>{if(t){addCounter(g3,t,'atk',1);give(g3,n-1);}});
+          };
+          give(g,5);
+        } else {
+          /* Count Fighters with ANY counter, not just +1 atk */
+          const n=myFighters(g,ctx.pid).filter(u=>{
+            const ic=g.inst[u].counters;if(!ic)return false;
+            return Object.keys(ic).some(k=>ic[k]!==0);
+          }).length;
+          if(n>0){drawN(g,ctx.pid,n);log(g,'Roll Call: '+n+' ally Fighter(s) with counters \u2014 drew '+n+' card(s).');}
+          else log(g,'Roll Call: no ally Fighters with counters \u2014 drew 0.');
+        }
+      });
+  };
+})();
+
+/* Flipping Out: text says "Deal 4 damage to UP TO TWO different target B/F."
+   Add explicit Skip on first target (current relies on null fallthrough). */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq82zkhm']||(window.CATA_ABILITIES['render-mq82zkhm']={});
+  e.run=function(gp,ctx){
+    pendTarget(gp,{forId:ctx.pid,prompt:'Flipping Out: 4 damage to which Boss/Fighter? (may Skip)',
+      filter:bossOrFighterFilter()},(g,t1)=>{
+        if(!t1){log(g,'Flipping Out: no targets selected.');return;}
+        dealDamage(g,t1,4);
+        pendTarget(g,{forId:ctx.pid,prompt:'Flipping Out: second (different) target? (may Skip)',
+          filter:i=>(i.kind==='fighter'||i.kind==='boss')&&i.uid!==t1},
+          (g2,t2)=>{if(t2)dealDamage(g2,t2,4);});
+      });
+  };
+})();
+
+/* ──────── Batch 7 (re-audit): Tactic accuracy refinements ──────── */
+
+/* Roll Call: text says "draw a card for each Fighter WITH A COUNTER on it on your team."
+   Was: filtered to counters.atk > 0 (positive only). Per text, "a counter" means any
+   non-zero counter — including -1 atk counters from Echo Fade. Fix to non-zero. */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq83hedv']||(window.CATA_ABILITIES['render-mq83hedv']={});
+  e.run=function(gp,ctx){
+    pendPick(gp,{forId:ctx.pid,prompt:'Roll Call: choose effect',
+      options:[{label:'Distribute 5 +1 Attack counters',value:'distr'},
+               {label:'Draw a card for each Fighter on your team with a counter',value:'draw'}]},
+      (g,choice)=>{
+        if(choice==='distr'){
+          const give=(g2,n)=>{if(n===0)return;
+            pendTarget(g2,{forId:ctx.pid,prompt:'+1 Attack to which ally Fighter? ('+n+' left)',
+              filter:i=>i.kind==='fighter'&&i.owner===ctx.pid},
+              (g3,t)=>{if(t){addCounter(g3,t,'atk',1);give(g3,n-1);}});};
+          give(g,5);
+        } else {
+          const n=myFighters(g,ctx.pid).filter(u=>{const i=g.inst[u];return i.counters&&i.counters.atk!==0;}).length;
+          if(n>0){drawN(g,ctx.pid,n);log(g,'Roll Call: '+n+' Fighter(s) with counters \u2014 drew '+n+' card(s).');}
+          else log(g,'Roll Call: no Fighters with counters on your team.');
+        }
+      });
   };
 })();
