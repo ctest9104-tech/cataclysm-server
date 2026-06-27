@@ -1,4 +1,4 @@
-/* CATACLYSM ARCADE Community Project */
+/* CATACLYSM ARCADE Community Project Not Created By The Team */
 const SUPABASE_URL='https://mhvtcztuusjuzdjamnfo.supabase.co';
 const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1odnRjenR1dXNqdXpkamFtbmZvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4MzE1MDUsImV4cCI6MjA5NzQwNzUwNX0.b7fq9uditGv3rabTvYeAyGxJxhSAmoVK0TpyfuRBass';
 let _db=null;
@@ -654,7 +654,19 @@ function advanceLevel(gp,settings){
   levelStart(gp,settings);log(gp,'\u2014 Level '+gp.level+' begins \u2014');
 }
 function activePlayers(gp){return gp.order.filter(p=>!gp.p[p].defeated);}
-function nextTurn(gp){const ord=gp.order;let idx=gp.curIdx;do{idx=(idx+1)%ord.length;}while(gp.p[ord[idx]].defeated);gp.curIdx=idx;}
+/* Per rules: "the next player in clockwise order WHO HAS NOT ALREADY PASSED then has
+   the initiative." nextTurn skips both defeated AND passed players. */
+function nextTurn(gp){
+  const ord=gp.order;let idx=gp.curIdx;
+  for(let n=0;n<ord.length;n++){
+    idx=(idx+1)%ord.length;
+    const pid=ord[idx];
+    if(gp.p[pid].defeated)continue;
+    if(gp.passedSet&&gp.passedSet.includes(pid))continue;
+    gp.curIdx=idx;return;
+  }
+  /* Nobody non-passed left — caller should advance level. Leave curIdx as-is. */
+}
 function checkWin(gp){
   Object.keys(gp.p).forEach(pid=>{if(!gp.p[pid].defeated&&gp.inst[gp.p[pid].boss]&&gp.inst[gp.p[pid].boss].hp<=0)gp.p[pid].defeated=true;});
   const left=activePlayers(gp);
@@ -732,7 +744,7 @@ function nextResponsePriority(gp,attackerPid,passed){
 
 function declareAttack(gp,atkUid,defUid,ctxPid){
   const cost=effectiveAtkCost(gp,atkUid);if(!spendCoins(gp,ctxPid,cost))return false;
-  gp.inst[atkUid].actedCount=(gp.inst[atkUid].actedCount||0)+1;gp.passedSet=[];
+  gp.inst[atkUid].actedCount=(gp.inst[atkUid].actedCount||0)+1;
   gp.pendingAttack={attacker:atkUid,defender:defUid,attackerOwner:ctxPid};
   const ai=gp.inst[atkUid];const atkFaction=(ai&&CARDS[ai.cid]||{}).faction;
   /* Whiskers (and similar) override faction during the attack */
@@ -892,6 +904,11 @@ window.playHandCard=async function(u){
     } else if(gp.curIdx!==gp.order.indexOf(pid)&&c.speed!=='instant'){
       return alert('Not your turn.');
     }
+    /* Per rules: "Once a player has chosen pass as a move, they can only take response
+       actions for the rest of the level." Block regular moves for passed players. */
+    if(gp.passedSet&&gp.passedSet.includes(pid)&&c.type!=='response'){
+      return alert('You have passed this level. Only Response cards may be played.');
+    }
     const playCost=(c.type==='fighter'||c.type==='weapon')?0:(c.cost||0);
     if(gp.p[pid].coins<playCost)return alert('Not enough coins.');
     if(c.type==='fighter'){if((c.level||0)>gp.level)return alert('Level requirement not met (need Lvl '+(c.level)+').');
@@ -901,16 +918,15 @@ window.playHandCard=async function(u){
       }
       moveZone(gp,pid,u,'hand','board');resetInstance(gp,u);
       fireOnEnter(gp,u,pid);
-      gp.passedSet=[];}
+    }
     else if(c.type==='weapon'){if((c.level||0)>gp.level)return alert('Level requirement not met.');
       if(!gp.p[pid].board.filter(x=>gp.inst[x]&&gp.inst[x].kind==='fighter').length)return alert('No Fighter to wield this to.');
       moveZone(gp,pid,u,'hand','board');
       enforceSameNameRule(gp,u,pid);
       if(gp.inst[u]){
-        gp.passedSet=[];
         pendTarget(gp,{forId:pid,prompt:'Wield '+c.name+' to which Fighter?',filter:i=>i.kind==='fighter'&&i.owner===pid},(gp2,fUid)=>wieldWeapon(gp2,u,fUid));
       }}
-    else{spendCoins(gp,pid,playCost);moveZone(gp,pid,u,'hand','grave');gp.passedSet=[];
+    else{spendCoins(gp,pid,playCost);moveZone(gp,pid,u,'hand','grave');
       if(c.run){log(gp,gp.p[pid].name+' plays '+c.name+'.');c.run(gp,{pid,src:u});}
       else log(gp,gp.p[pid].name+' plays '+c.name+' \u2014 GM mode for manual effects, or right-click card to read.');
       /* Mother May Eye and similar: trigger on any T/R played */
@@ -932,6 +948,8 @@ window.confirmAttack=async function(defUid){
   const atkUid=S.attackPick;S.attackPick=null;
   await act(r=>{const gp=r.game;const pid=S.myId;
     if(gp.curIdx!==gp.order.indexOf(pid))return alert('Not your turn.');
+    /* Per rules: passed players can only take Response actions for the rest of the level. */
+    if(gp.passedSet&&gp.passedSet.includes(pid))return alert('You have passed this level. No more attacks until next level.');
     if(!canAct(gp,atkUid))return alert('That unit can\'t act again this level.');
     if(!diffinCanAttack(gp,atkUid))return alert('Diffin can only attack if you have a Fighter with 5+ Health on your team.');
     if(!joeCanAttack(gp,atkUid))return alert('Joe Strummage can only attack if you have 1 or fewer cards in hand.');
@@ -960,6 +978,12 @@ window.useAbility=async function(u,idx){
     } else if(gp.curIdx!==gp.order.indexOf(pid)){
       return alert('Not your turn.');
     }
+    /* Per rules: passed players can only take Response actions. Block regular activated
+       abilities for passed players. Response activated abilities are only used in
+       response windows (handled above). */
+    if(!gp.responseWindow&&gp.passedSet&&gp.passedSet.includes(pid)){
+      return alert('You have passed this level. Only Response actions allowed.');
+    }
     if(useAb.cost.tap&&!canAct(gp,u))return alert('Already acted this level.');
     /* Per-ally ability cost modifier (Trouble, Forerunner: +① to others' ability costs) */
     let needCoins=useAb.cost.coins||0;
@@ -978,24 +1002,28 @@ window.useAbility=async function(u,idx){
     if(useAb.cost.tap)i.actedCount=(i.actedCount||0)+1;
     if(useAb.cost.sacrifice)destroyInstance(gp,u,{skipFortify:true});
     if(useAb.cost.selfDamage){i.hp-=useAb.cost.selfDamage;if(i.hp<=0)destroyInstance(gp,u);}
-    gp.passedSet=[];useAb.run(gp,{pid,src:u});gp.p[pid].hasActed=true;
+    useAb.run(gp,{pid,src:u});gp.p[pid].hasActed=true;
     if(gp.responseWindow){
       if(!gp.pendingAttack){gp.responseWindow=null;}
       else if(!gp.pending){resolvePendingAttack(gp);if(!gp.responseWindow)nextTurn(gp);}
     } else if(!gp.pending){nextTurn(gp);}
   });
 };
-/* THE BIG FIX: passedSet tracks who passed; only nextTurn if NOT advancing */
+/* Per rules: pass is a permanent commitment for the level. Once a player passes,
+   they can only take Response actions. When all active players have passed, the
+   level ends and the next level begins. */
 window.passTurn=async function(){
   await act(r=>{const gp=r.game;const pid=S.myId;
     if(gp.curIdx!==gp.order.indexOf(pid))return alert('Not your turn.');
     if(!gp.passedSet)gp.passedSet=[];
-    if(!gp.passedSet.includes(pid))gp.passedSet.push(pid);
+    if(gp.passedSet.includes(pid))return alert('You have already passed this level.');
+    gp.passedSet.push(pid);
+    log(gp,gp.p[pid].name+' passes.');
     const active=activePlayers(gp);
     if(active.every(p=>gp.passedSet.includes(p))){
       advanceLevel(gp,r.settings); /* passedSet reset inside advanceLevel */
     }else{
-      nextTurn(gp); /* Only move turn if NOT advancing level */
+      nextTurn(gp); /* nextTurn skips passed players */
     }
   });
 };
