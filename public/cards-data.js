@@ -1,4 +1,5 @@
-/* Cataclysm Arcade — complete card database (163 cards) */
+/* Cataclysm Arcade — complete card database (163 cards).
+   Transcribed from EB1 / DS1 published set. ©2026 Mothership Labs. */
 window.CATA_CARDS = [
   {"id": "DS1-023", "img": "DS1-023.webp", "name": "Free Vector", "faction": "apex", "type": "fighter", "sub": "Pawn", "level": 1, "hp": 2, "atkCost": 0, "atk": 1, "cost": 0, "text": "When Free Vector dies, draw a card."},
   {"id": "DS1-030", "img": "DS1-030.webp", "name": "Intersentinel", "faction": "apex", "type": "fighter", "sub": "Pawn", "level": 3, "hp": 3, "atkCost": 1, "atk": 1, "cost": 1, "keywords": ["Block"], "text": "At the beginning of each level, your Boss heals 1. ①⊙: Block (A Boss or Fighter attacks this Fighter instead.)"},
