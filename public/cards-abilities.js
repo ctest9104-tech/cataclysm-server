@@ -3354,4 +3354,104 @@ function makeBlockGrantForWielder(coinCost){
         }
       });
   };
-})(); 
+})();
+
+/* ──────── Final accuracy pass: "up to N" targeting — all optional targets get Skip ──────── */
+
+/* Murder Countess: "deal 1 damage to up to two DIFFERENT target Bosses or Fighters."
+   "Up to two" = 0, 1, or 2 targets. Both prompts skippable; skipping the first ends the
+   effect (you chose zero targets), so the second prompt only appears after a first pick. */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq83be2z']||(window.CATA_ABILITIES['render-mq83be2z']={});
+  e.onEnter=function(gp,ctx){
+    pendTarget(gp,{forId:ctx.pid,prompt:'Murder Countess: deal 1 damage to a Boss or Fighter (up to 2, or Skip)',
+      filter:bossOrFighterFilter(),allowSkip:true},(g,t1)=>{
+      if(!t1)return; /* skipped — zero targets chosen */
+      dealDamage(g,t1,1);
+      pendTarget(g,{forId:ctx.pid,prompt:'Murder Countess: 1 damage to a second (different) target, or Skip',
+        filter:i=>(i.kind==='fighter'||i.kind==='boss')&&i.uid!==t1,allowSkip:true},
+        (g2,t2)=>{if(t2)dealDamage(g2,t2,1);});
+    });
+  };
+})();
+
+/* Flipping Out: "Deal 4 damage to up to two different target Bosses or Fighters."
+   Same structure — was missing skip on BOTH prompts and would crash if first was null. */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq82zkhm']||(window.CATA_ABILITIES['render-mq82zkhm']={});
+  e.run=function(gp,ctx){
+    pendTarget(gp,{forId:ctx.pid,prompt:'Flipping Out: deal 4 damage to a Boss or Fighter (up to 2, or Skip)',
+      filter:bossOrFighterFilter(),allowSkip:true},(g,t1)=>{
+      if(!t1)return;
+      dealDamage(g,t1,4);
+      pendTarget(g,{forId:ctx.pid,prompt:'Flipping Out: 4 damage to a second (different) target, or Skip',
+        filter:i=>(i.kind==='fighter'||i.kind==='boss')&&i.uid!==t1,allowSkip:true},
+        (g2,t2)=>{if(t2)dealDamage(g2,t2,4);});
+    });
+  };
+})();
+
+/* Calamity Blaque: "+1 Attack counter on up to two target Fighters on your team." */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq82qb03']||(window.CATA_ABILITIES['render-mq82qb03']={});
+  e.onEnter=function(gp,ctx){
+    const pick=(g,n,exclude)=>{if(n===0)return;
+      pendTarget(g,{forId:ctx.pid,prompt:'Calamity: +1 Attack to one of your Fighters ('+n+' left, or Skip)',
+        filter:i=>i.kind==='fighter'&&i.owner===ctx.pid&&!exclude.includes(i.uid),allowSkip:true},
+        (g2,t)=>{if(t){addCounter(g2,t,'atk',1);pick(g2,n-1,exclude.concat([t]));}});};
+    pick(gp,2,[]);
+  };
+})();
+
+/* RATS!: "+1 Attack counter on up to three target Fighters on your team."
+   Note: "up to three target Fighters" (plural, different) — exclude already-picked. */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq83grxa']||(window.CATA_ABILITIES['render-mq83grxa']={});
+  e.run=function(gp,ctx){
+    const pick=(g,n,exclude)=>{if(n===0)return;
+      pendTarget(g,{forId:ctx.pid,prompt:'RATS!: +1 Attack to one of your Fighters ('+n+' remaining, or Skip)',
+        filter:i=>i.kind==='fighter'&&i.owner===ctx.pid&&!exclude.includes(i.uid),allowSkip:true},
+        (g2,t)=>{if(t){addCounter(g2,t,'atk',1);pick(g2,n-1,exclude.concat([t]));}});};
+    pick(gp,3,[]);
+  };
+})();
+
+/* Roll Call (distribute mode): "Distribute up to five +1 Attack counters among Fighters
+   on your team." Distribution CAN repeat the same Fighter — no exclusion — but each
+   placement is optional (Skip stops distributing). Draw mode unchanged from prior fix. */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq83hedv']||(window.CATA_ABILITIES['render-mq83hedv']={});
+  e.run=function(gp,ctx){
+    pendPick(gp,{forId:ctx.pid,prompt:'Roll Call: choose effect',
+      options:[{label:'Distribute up to 5 +1 Attack counters',value:'distr'},
+               {label:'Draw a card for each Fighter on your team with a counter',value:'draw'}]},
+      (g,choice)=>{
+        if(choice==='distr'){
+          const give=(g2,n)=>{if(n===0)return;
+            pendTarget(g2,{forId:ctx.pid,prompt:'Roll Call: +1 Attack to which ally Fighter? ('+n+' left, or Skip to stop)',
+              filter:i=>i.kind==='fighter'&&i.owner===ctx.pid,allowSkip:true},
+              (g3,t)=>{if(t){addCounter(g3,t,'atk',1);give(g3,n-1);}});};
+          give(g,5);
+        } else if(choice==='draw'){
+          const n=myFighters(g,ctx.pid).filter(u=>{const i=g.inst[u];return i.counters&&i.counters.atk!==0;}).length;
+          if(n>0){drawN(g,ctx.pid,n);log(g,'Roll Call: '+n+' Fighter(s) with counters \u2014 drew '+n+' card(s).');}
+          else log(g,'Roll Call: no Fighters with counters on your team.');
+        }
+      });
+  };
+})();
+
+/* Pilskin onEnter: "stun up to two target Fighters." Both prompts skippable. */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq83e6ta']||(window.CATA_ABILITIES['render-mq83e6ta']={});
+  e.onEnter=function(gp,ctx){
+    pendTarget(gp,{forId:ctx.pid,prompt:'Pilskin: stun a Fighter (up to 2, or Skip)',
+      filter:fighterTargetFilter(),allowSkip:true},(g,t1)=>{
+      if(!t1)return;
+      stunInstance(g,t1,'shifter');
+      pendTarget(g,{forId:ctx.pid,prompt:'Pilskin: stun a second (different) Fighter, or Skip',
+        filter:i=>i.kind==='fighter'&&i.uid!==t1,allowSkip:true},
+        (g2,t2)=>{if(t2)stunInstance(g2,t2,'shifter');});
+    });
+  };
+})();
