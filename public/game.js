@@ -1,4 +1,4 @@
-/* CATACLYSM ARCADE */
+/* CATACLYSM ARCADE Community Project */
 const SUPABASE_URL='https://mhvtcztuusjuzdjamnfo.supabase.co';
 const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1odnRjenR1dXNqdXpkamFtbmZvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4MzE1MDUsImV4cCI6MjA5NzQwNzUwNX0.b7fq9uditGv3rabTvYeAyGxJxhSAmoVK0TpyfuRBass';
 let _db=null;
@@ -1007,7 +1007,11 @@ window.playHandCard=async function(u){
       else if(!gp.pending){resolvePendingAttack(gp);}
     }
     gp.p[pid].hasActed=true;
-    if(!gp.pending&&!gp.responseWindow)nextTurn(gp);});
+    /* Per round-robin rules: playing a card is a move DURING your turn. You keep your
+       turn and may continue making moves until you click END TURN. (This was the last
+       remaining auto-advance — it moved the turn without a pass, so passedSet never
+       filled and levels couldn't advance on that path.) */
+  });
 };
 window.startAttack=function(u){S.attackPick=u;render();};
 window.cancelAttackPick=function(){S.attackPick=null;render();};
@@ -1212,7 +1216,7 @@ window.gmRetap=async function(pid){
     log(gp,'[GM] All '+gp.p[pid].name+'\u2019s units untapped.');});
 };
 window.copyCode=function(){const url=window.location.origin+window.location.pathname+'?room='+S.code;try{navigator.clipboard.writeText(url);}catch(e){const t=document.createElement('textarea');t.value=url;document.body.appendChild(t);t.select();document.execCommand('copy');document.body.removeChild(t);}};
-window.showZoom=function(cid){S.zoomCid=cid;render();};
+window.showZoom=function(cid){if(window.cpHide)window.cpHide();S.zoomCid=cid;render();};
 window.closeZoom=function(){S.zoomCid=null;render();};
 
 function pendingForMe(gp){return gp.pending&&gp.pending.forId===S.myId?gp.pending:null;}
@@ -2349,14 +2353,28 @@ function fxDeathGhost(uid){
   }catch(e){}
 }
 
-/* Hover card preview — MTG Arena style large readable panel (desktop) */
-let _cpEl=null;
+/* Hover card preview — MTG Arena style large readable panel (desktop ONLY).
+   Mobile browsers emulate mouseenter on tap/long-press, which stacked a stuck
+   preview on top of the zoom overlay. Three belts: (1) recent-touch suppression,
+   (2) hover:none media detection, (3) any pointerdown/scroll hides it. */
+let _cpEl=null,_lastTouch=0;
+try{
+  document.addEventListener('touchstart',function(){_lastTouch=Date.now();window.cpHide&&window.cpHide();},{passive:true,capture:true});
+  document.addEventListener('pointerdown',function(e){if(e.pointerType!=='mouse')window.cpHide&&window.cpHide();},{capture:true});
+  document.addEventListener('scroll',function(){window.cpHide&&window.cpHide();},{passive:true,capture:true});
+}catch(e){}
+function cpTouchDevice(){
+  if(Date.now()-_lastTouch<1200)return true;
+  try{if(window.matchMedia&&window.matchMedia('(hover: none)').matches)return true;}catch(e){}
+  return false;
+}
 function cpEnsure(){
   if(_cpEl&&document.body.contains(_cpEl))return _cpEl;
   _cpEl=document.createElement('div');_cpEl.id='cata-cp';_cpEl.style.display='none';
   document.body.appendChild(_cpEl);return _cpEl;
 }
 window.cpShow=function(cid,ev){
+  if(cpTouchDevice())return;
   const c=CARDS[cid];if(!c)return;
   const el=cpEnsure();
   const fCol=FCOL[c.faction]||'#999';
