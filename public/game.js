@@ -1,4 +1,4 @@
-/* CATACLYSM ARCADE Community Project Not The Team All Respect To The Renowned BDM and BLEARGH */
+/* CATACLYSM ARCADE */
 const SUPABASE_URL='https://mhvtcztuusjuzdjamnfo.supabase.co';
 const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1odnRjenR1dXNqdXpkamFtbmZvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4MzE1MDUsImV4cCI6MjA5NzQwNzUwNX0.b7fq9uditGv3rabTvYeAyGxJxhSAmoVK0TpyfuRBass';
 let _db=null;
@@ -33,6 +33,60 @@ async function act(mutator){
   mutator(fresh); const ok=await saveRoom(fresh);
   S.busy=false; if(ok){ S.room=fresh; render(); }
 }
+
+/* ═══════ FX BROADCAST QUEUE — effects sync to ALL clients ═══════
+   Mutations push FX events into game state; every client consumes unseen
+   events after render, so attacks/damage/deaths animate for everyone
+   (previously only the acting player saw them). */
+function fxPush(gp,t,p){
+  gp.fxSeq=(gp.fxSeq||0)+1;
+  gp.fxQueue=(gp.fxQueue||[]).slice(-23);
+  gp.fxQueue.push({id:gp.fxSeq,t:t,p:p||{}});
+}
+
+/* ═══════ SOUND ENGINE — WebAudio synth, zero external assets ═══════ */
+let AC=null,MUTED=(function(){try{return localStorage.getItem('cata_mute')==='1';}catch(e){return false;}})();
+function initAC(){if(!AC){try{AC=new (window.AudioContext||window.webkitAudioContext)();}catch(e){}}if(AC&&AC.state==='suspended')AC.resume();}
+document.addEventListener('pointerdown',initAC);
+function tone(freq,dur,type,vol,when,slideTo){
+  if(!AC)return;const t0=AC.currentTime+(when||0);
+  const o=AC.createOscillator(),g=AC.createGain();
+  o.type=type||'sine';o.frequency.setValueAtTime(freq,t0);
+  if(slideTo)o.frequency.exponentialRampToValueAtTime(Math.max(20,slideTo),t0+dur);
+  g.gain.setValueAtTime(0.0001,t0);
+  g.gain.exponentialRampToValueAtTime(vol||0.12,t0+0.012);
+  g.gain.exponentialRampToValueAtTime(0.0001,t0+dur);
+  o.connect(g);g.connect(AC.destination);o.start(t0);o.stop(t0+dur+0.05);
+}
+function noiseBurst(dur,vol,when,cutStart,cutEnd){
+  if(!AC)return;const t0=AC.currentTime+(when||0);
+  const len=Math.max(1,Math.floor(AC.sampleRate*dur));
+  const buf=AC.createBuffer(1,len,AC.sampleRate);const d=buf.getChannelData(0);
+  for(let i=0;i<len;i++)d[i]=(Math.random()*2-1)*(1-i/len);
+  const src=AC.createBufferSource();src.buffer=buf;
+  const f=AC.createBiquadFilter();f.type='lowpass';
+  f.frequency.setValueAtTime(cutStart||2200,t0);
+  f.frequency.exponentialRampToValueAtTime(cutEnd||300,t0+dur);
+  const g=AC.createGain();g.gain.setValueAtTime(vol||0.2,t0);
+  g.gain.exponentialRampToValueAtTime(0.0001,t0+dur);
+  src.connect(f);f.connect(g);g.connect(AC.destination);src.start(t0);
+}
+function snd(kind){
+  if(MUTED||!AC)return;
+  try{
+    switch(kind){
+      case 'atk':   noiseBurst(0.22,0.22,0,2600,220);tone(95,0.18,'sine',0.22,0.02,42);break;
+      case 'dmg':   tone(190,0.09,'square',0.10,0,120);break;
+      case 'heal':  tone(520,0.14,'sine',0.09,0,760);tone(780,0.12,'sine',0.06,0.07);break;
+      case 'stun':  tone(760,0.05,'sawtooth',0.09,0,820);tone(700,0.05,'sawtooth',0.08,0.06,760);tone(640,0.06,'sawtooth',0.07,0.12,700);break;
+      case 'death': tone(300,0.32,'triangle',0.14,0,55);noiseBurst(0.25,0.10,0.02,900,120);break;
+      case 'lvl':   tone(440,0.12,'triangle',0.11,0);tone(554,0.12,'triangle',0.11,0.11);tone(659,0.2,'triangle',0.12,0.22);break;
+      case 'turn':  tone(523,0.1,'sine',0.10,0);tone(784,0.16,'sine',0.10,0.1);break;
+      case 'pop':   tone(660,0.05,'sine',0.08,0,880);break;
+    }
+  }catch(e){}
+}
+window.toggleMute=function(){MUTED=!MUTED;try{localStorage.setItem('cata_mute',MUTED?'1':'0');}catch(e){}render();};
 
 /* IMAGES */
 
@@ -445,8 +499,8 @@ function moveZone(gp,pid,u,from,to){
 }
 function drawN(gp,pid,n){for(let i=0;i<n;i++){const d=gp.p[pid].deck;if(!d.length)continue;gp.p[pid].hand.push(d.shift());}}
 function spendCoins(gp,pid,n){if(gp.p[pid].coins<n)return false;gp.p[pid].coins-=n;return true;}
-function healInst(gp,uid,amt){const i=gp.inst[uid];if(!i)return;const c=CARDS[i.cid];if(!c)return;const before=i.hp;i.hp=Math.min(i.maxHp,i.hp+amt);const real=i.hp-before;if(real>0){log(gp,c.name+' heals '+real+'.');showDamageNumber(uid,real,'heal');showHealEffect(uid);}}
-function gainHealth(gp,uid,amt){const i=gp.inst[uid];if(!i)return;const c=CARDS[i.cid];if(!c)return;i.maxHp+=amt;i.hp+=amt;log(gp,c.name+' gains '+amt+' Health (now '+i.hp+'/'+i.maxHp+').');showDamageNumber(uid,amt,'heal');showHealEffect(uid);}
+function healInst(gp,uid,amt){const i=gp.inst[uid];if(!i)return;const c=CARDS[i.cid];if(!c)return;const before=i.hp;i.hp=Math.min(i.maxHp,i.hp+amt);const real=i.hp-before;if(real>0){log(gp,c.name+' heals '+real+'.');fxPush(gp,'heal',{u:uid,n:real});}}
+function gainHealth(gp,uid,amt){const i=gp.inst[uid];if(!i)return;const c=CARDS[i.cid];if(!c)return;i.maxHp+=amt;i.hp+=amt;log(gp,c.name+' gains '+amt+' Health (now '+i.hp+'/'+i.maxHp+').');fxPush(gp,'heal',{u:uid,n:amt});}
 function addCounter(gp,uid,type,amt){
   const i=gp.inst[uid];if(!i)return;const c=CARDS[i.cid];
   i.counters=i.counters||{};i.counters[type]=(i.counters[type]||0)+amt;
@@ -454,7 +508,7 @@ function addCounter(gp,uid,type,amt){
   if(type==='atk'&&amt>0){const pid=i.owner;(gp.p[pid].board.concat([gp.p[pid].boss])).forEach(u=>{if(u&&gp.inst[u]&&CARDS[gp.inst[u].cid]&&CARDS[gp.inst[u].cid].onCounterPlaced)CARDS[gp.inst[u].cid].onCounterPlaced(gp,pid);});}
   log(gp,(c?c.name:'?')+' gets '+type+' counter ('+(amt>0?'+':'')+amt+').');
 }
-function stunInstance(gp,uid,sourceFaction){const i=gp.inst[uid];if(!i)return;i.stunned=true;i.actedCount=99;log(gp,(CARDS[i.cid]||{}).name+' is stunned.');showStunEffect(uid,sourceFaction);}
+function stunInstance(gp,uid,sourceFaction){const i=gp.inst[uid];if(!i)return;i.stunned=true;i.actedCount=99;log(gp,(CARDS[i.cid]||{}).name+' is stunned.');fxPush(gp,'stun',{u:uid,f:sourceFaction||null});}
 function createToken(gp,pid,tokenId){const u=newInstance(gp,tokenId,pid);gp.p[pid].board.push(u);log(gp,gp.p[pid].name+' creates '+CARDS[tokenId].name+'.');return u;}
 function wieldWeapon(gp,wUid,fUid){
   const w=gp.inst[wUid];if(!w||!gp.inst[fUid])return;
@@ -508,7 +562,7 @@ function destroyInstance(gp,uid,opts){
       });
       return;}
   }
-  showDestroyEffect(uid);
+  fxPush(gp,'death',{u:uid});
   if(i.kind==='fighter'){
     gp.fighterLeftThisLevel=true;
     /* Per-player Fighter death tracking (Gordo, Collector reads this) */
@@ -548,7 +602,7 @@ function dealDamage(gp,uid,amt){
     }
   }
   i.hp-=reduced;i.dmgThisLevel=true;
-  if(reduced>0){log(gp,c.name+' takes '+reduced+' damage.');showDamageNumber(uid,-reduced,'dmg');}
+  if(reduced>0){log(gp,c.name+' takes '+reduced+' damage.');fxPush(gp,'dmg',{u:uid,n:reduced});}
   /* Fire onDamaged hook (Ryle, future cards). amount = damage actually dealt (after armor). */
   if(reduced>0&&c.onDamaged){
     c.onDamaged(gp,{pid:i.owner,src:uid,amount:reduced});
@@ -573,9 +627,16 @@ function dealDamage(gp,uid,amt){
 }
 function pendTarget(gp,opts,cb){
   const valid=allBoard(gp).filter(u=>{const s=instSummary(gp,u);if(!s||s.dead)return false;return opts.filter(Object.assign({},s,{owner:gp.inst[u].owner,cid:gp.inst[u].cid}));});
-  gp.pending={kind:'target',forId:opts.forId,prompt:opts.prompt,valid};S.pendingCb=cb;
+  /* SOFT-LOCK GUARD: if no valid targets exist, resolve immediately with null instead of
+     leaving the game stuck on an unanswerable prompt. The callback's if(t) guard handles it. */
+  if(!valid.length){log(gp,'(No valid target \u2014 effect fizzles.)');if(cb)cb(gp,null);return;}
+  gp.pending={kind:'target',forId:opts.forId,prompt:opts.prompt,valid,allowSkip:!!opts.allowSkip};S.pendingCb=cb;
 }
-function pendPick(gp,opts,cb){gp.pending={kind:'pick',forId:opts.forId,prompt:opts.prompt,options:opts.options};S.pendingCb=cb;}
+function pendPick(gp,opts,cb){
+  /* SOFT-LOCK GUARD: no options → resolve null immediately. */
+  if(!opts.options||!opts.options.length){if(cb)cb(gp,null);return;}
+  gp.pending={kind:'pick',forId:opts.forId,prompt:opts.prompt,options:opts.options};S.pendingCb=cb;
+}
 function pendDiscardOptional(gp,ctx,prompt,cb){
   gp.pending={kind:'discard',forId:ctx.pid,prompt,options:gp.p[ctx.pid].hand.map(u=>({label:CARDS[gp.inst[u].cid].name,value:u})).concat([{label:'Skip',value:''}])};
   S.pendingCb=(gp2,v)=>{
@@ -655,6 +716,7 @@ function advanceLevel(gp,settings){
   gp.firstIdx=(gp.curIdx+1)%gp.order.length;
   while(gp.p[gp.order[gp.firstIdx]].defeated)gp.firstIdx=(gp.firstIdx+1)%gp.order.length;
   gp.curIdx=gp.firstIdx;gp.passedSet=[];
+  fxPush(gp,'lvl',{n:gp.level,first:gp.p[gp.order[gp.firstIdx]].name});
   levelStart(gp,settings);log(gp,'\u2014 Level '+gp.level+' begins (\u2018'+gp.p[gp.order[gp.firstIdx]].name+'\u2019 first) \u2014');
 }
 function activePlayers(gp){return gp.order.filter(p=>!gp.p[p].defeated);}
@@ -753,7 +815,7 @@ function declareAttack(gp,atkUid,defUid,ctxPid){
   const ai=gp.inst[atkUid];const atkFaction=(ai&&CARDS[ai.cid]||{}).faction;
   /* Whiskers (and similar) override faction during the attack */
   const fxFaction=(ai&&ai.tempFaction&&ai.tempFactionLevel===gp.level)?ai.tempFaction:atkFaction;
-  showAttackFlash(atkUid,defUid,fxFaction);
+  fxPush(gp,'atk',{a:atkUid,d:defUid,f:fxFaction||null});
   fireOnAttacked(gp,defUid,atkUid);
   const nextPri=nextResponsePriority(gp,ctxPid,[]);
   if(!nextPri)return resolvePendingAttack(gp);
@@ -920,11 +982,13 @@ window.playHandCard=async function(u){
         return alert(c.name+' can\'t be replayed this level (Fluorescent Fall).');
       }
       moveZone(gp,pid,u,'hand','board');resetInstance(gp,u);
+      fxPush(gp,'enter',{u:u});
       fireOnEnter(gp,u,pid);
     }
     else if(c.type==='weapon'){if((c.level||0)>gp.level)return alert('Level requirement not met.');
       if(!gp.p[pid].board.filter(x=>gp.inst[x]&&gp.inst[x].kind==='fighter').length)return alert('No Fighter to wield this to.');
       moveZone(gp,pid,u,'hand','board');
+      fxPush(gp,'enter',{u:u});
       enforceSameNameRule(gp,u,pid);
       if(gp.inst[u]){
         pendTarget(gp,{forId:pid,prompt:'Wield '+c.name+' to which Fighter?',filter:i=>i.kind==='fighter'&&i.owner===pid},(gp2,fUid)=>wieldWeapon(gp2,u,fUid));
@@ -1240,6 +1304,7 @@ function bCard(gp,uid,opts){
   const badgesHtml=badges.length?`<div class="bcard-badges">${badges.join('')}</div>`:'';
 
   return`<div class="zone-wrap"><div class="${cls}" data-uid="${uid}" style="border-color:${clickable?'var(--ap)':fCol+'40'}"${clickFn?` onclick="${clickFn}"`:''}
+    onmouseenter="cpShow('${i.cid}',event)" onmousemove="cpMove(event)" onmouseleave="cpHide()"
     oncontextmenu="showZoom('${i.cid}');return false">
     ${artImg(i.cid,'bcard-art')}
     ${badgesHtml}
@@ -1266,6 +1331,7 @@ function hCard(gp,uid,myTurn,pend,fanOpts){
   const canFortifyHand=myTurn&&!pend&&!S.attackPick&&c.type==='fighter'&&c.hasFortifyResponse&&c.faction==='synth'&&gp.p[S.myId].coins>=2&&hasFortifyHost(gp,S.myId,uid);
   return`<div class="hcard${playable?'':' unplayable'}" ${fanOpts?`data-hand-pos="${fanOpts.idx}"`:''} style="border-color:${fCol}55;${fanStyle}"
     ${playable?`onclick="playHandCard('${uid}')"`:''}
+    onmouseenter="cpShow('${i.cid}',event)" onmousemove="cpMove(event)" onmouseleave="cpHide()"
     oncontextmenu="showZoom('${i.cid}');return false">
     ${artImg(i.cid,'hcard-art')}
     <div class="hcard-body">
@@ -1338,7 +1404,7 @@ function playerStrip(gp,pid,isOpp){
   const canEndTurn=isMe&&isMyTurn&&!pendForMe&&!S.attackPick;
   return`<div class="player-strip${isOpp?' opp':''}${isMyTurn?' active':''}">
     <div class="ps-id">
-      <div class="player-name${isMyTurn?' is-turn':''}">${p.name}${p.defeated?' &#128128;':''}</div>
+      <div class="player-name${isMyTurn?' is-turn':''}">${p.name}${p.defeated?' &#128128;':''}${(gp.passedSet||[]).includes(pid)&&!p.defeated?' <span class="passed-badge">PASSED</span>':''}</div>
       <div class="ps-bossname">${bName}</div>
     </div>
     <div class="hp-bar-wrap">
@@ -1539,6 +1605,12 @@ function renderPlay(){
       }
       if(!cardOpts.length&&!plainOpts.length)
         h+=`<div class="action-opts">${opts.map(o=>`<button class="action-opt" onclick="resolvePending('${(o.value||'').replace(/'/g,"&#39;")}')">${o.label}</button>`).join('')}</div>`;
+    }
+    /* For target prompts that allow skipping (e.g. "up to N" cards: Murder Countess,
+       Flipping Out, Pilskin's second target, Sage's weapon-destroy, Evanesce, etc.),
+       render an explicit Skip button so the player can decline the next target. */
+    if(pend.kind==='target'&&pend.allowSkip){
+      h+=`<div class="action-opts"><button class="action-opt" onclick="resolvePending('')">Skip</button></div>`;
     }
     h+=`</div>`;
   }
@@ -1924,7 +1996,7 @@ function render(){
   }
   if(S.screen==='home'){app.innerHTML=renderHome()+(S.zoomCid?renderZoom():'');return;}
   const inGame=S.room&&S.room.phase==='play';
-  let h=`<div id="topbar"><div class="code">TABLE ${S.code||''}</div><div style="display:flex;gap:8px">${inGame?`<button class="btn ghost sm${S.gmMode?' gm-on':''}" onclick="toggleGm()" title="Toggle Game Master mode: manual overrides for HP, counters, status, coins, etc.">GM ${S.gmMode?'ON':'OFF'}</button>`:''}<button class="btn ghost sm" onclick="toggleHelp()">Keywords</button><button class="btn ghost sm" onclick="leaveTable()">Leave</button></div></div>`;
+  let h=`<div id="topbar"><div class="code">TABLE ${S.code||''}</div><div style="display:flex;gap:8px">${inGame?`<button class="btn ghost sm${S.gmMode?' gm-on':''}" onclick="toggleGm()" title="Toggle Game Master mode: manual overrides for HP, counters, status, coins, etc.">GM ${S.gmMode?'ON':'OFF'}</button>`:''}<button class="btn ghost sm" onclick="toggleMute()" title="Toggle sound effects">${MUTED?'SND OFF':'SND ON'}</button><button class="btn ghost sm" onclick="toggleHelp()">Keywords</button><button class="btn ghost sm" onclick="leaveTable()">Leave</button></div></div>`;
   if(S.room){
     if(S.room.phase==='lobby')h+=renderLobby();
     else if(S.room.phase==='build')h+=renderBuild();
@@ -1935,7 +2007,37 @@ function render(){
   if(S.presetDetail)h+=renderPresetDetail();
   if(S.mullOpen)h+=renderMulligan();
   if(S.room&&S.room.game&&S.room.game.responseWindow)h+=renderResponseWindow();
+  /* ═══ FX CONSUMPTION — play queued effects on every client ═══ */
+  const gpFx=S.room&&S.room.phase==='play'&&S.room.game;
+  let fxNew=[];
+  if(gpFx){
+    if(S.lastFx===undefined){S.lastFx=gpFx.fxSeq||0;} /* joiner: skip history */
+    fxNew=(gpFx.fxQueue||[]).filter(f=>f.id>S.lastFx);
+    if(fxNew.length)S.lastFx=fxNew[fxNew.length-1].id;
+    /* Deaths animate on the OLD DOM (element still exists pre-swap): clone-ghost */
+    fxNew.filter(f=>f.t==='death').forEach(f=>{fxDeathGhost(f.p.u);snd('death');});
+  }
   app.innerHTML=h;
+  if(gpFx){
+    /* Post-swap FX (new DOM present) */
+    if(fxNew.some(f=>f.t!=='death'))setTimeout(()=>{
+      fxNew.forEach(f=>{
+        if(f.t==='atk'){showAttackFlash(f.p.a,f.p.d,f.p.f);snd('atk');}
+        else if(f.t==='dmg'){showDamageNumber(f.p.u,-f.p.n,'dmg');snd('dmg');}
+        else if(f.t==='heal'){showDamageNumber(f.p.u,f.p.n,'heal');showHealEffect(f.p.u);snd('heal');}
+        else if(f.t==='stun'){showStunEffect(f.p.u,f.p.f);snd('stun');}
+        else if(f.t==='enter'){const el=document.querySelector('[data-uid="'+f.p.u+'"]');if(el){el.classList.add('card-enter');setTimeout(()=>el.classList.remove('card-enter'),650);}snd('pop');}
+        else if(f.t==='lvl'){showBanner('LEVEL '+f.p.n,(f.p.first||'')+' goes first');snd('lvl');}
+      });
+    },30);
+    /* YOUR TURN banner — local diff (suppressed when a level banner fires this tick) */
+    if(!gpFx.winner){
+      const turnPid=gpFx.order[gpFx.curIdx];
+      const lvlBanner=fxNew.some(f=>f.t==='lvl');
+      if(S.prevTurnPid!==undefined&&turnPid===S.myId&&S.prevTurnPid!==S.myId&&!lvlBanner){showBanner('YOUR TURN','');snd('turn');}
+      S.prevTurnPid=turnPid;
+    }
+  }
 }
 
 /* BOOTSTRAP */
@@ -2222,3 +2324,60 @@ function showDestroyEffect(uid){
     }catch(e){}
   });
 }
+
+
+/* ═══════ NEW FX: sweeping banner + death clone-ghost + hover preview ═══════ */
+function showBanner(title,sub){
+  try{
+    document.querySelectorAll('.fx-banner').forEach(b=>b.remove());
+    const b=document.createElement('div');b.className='fx-banner';
+    b.innerHTML='<div class="fx-banner-inner"><div class="fx-banner-title">'+title+'</div>'+(sub?'<div class="fx-banner-sub">'+sub+'</div>':'')+'</div>';
+    document.body.appendChild(b);
+    setTimeout(()=>{b.classList.add('out');},1350);
+    setTimeout(()=>{b.remove();},1900);
+  }catch(e){}
+}
+function fxDeathGhost(uid){
+  try{
+    const el=document.querySelector('[data-uid="'+uid+'"]');if(!el)return;
+    const r=el.getBoundingClientRect();
+    const ghost=el.cloneNode(true);
+    ghost.classList.add('death-ghost');
+    ghost.style.cssText='position:fixed;left:'+r.left+'px;top:'+r.top+'px;width:'+r.width+'px;height:'+r.height+'px;margin:0;z-index:9500;pointer-events:none;';
+    document.body.appendChild(ghost);
+    setTimeout(()=>ghost.remove(),750);
+  }catch(e){}
+}
+
+/* Hover card preview — MTG Arena style large readable panel (desktop) */
+let _cpEl=null;
+function cpEnsure(){
+  if(_cpEl&&document.body.contains(_cpEl))return _cpEl;
+  _cpEl=document.createElement('div');_cpEl.id='cata-cp';_cpEl.style.display='none';
+  document.body.appendChild(_cpEl);return _cpEl;
+}
+window.cpShow=function(cid,ev){
+  const c=CARDS[cid];if(!c)return;
+  const el=cpEnsure();
+  const fCol=FCOL[c.faction]||'#999';
+  const stats=(c.type==='fighter'||c.type==='boss')
+    ?'<div class="cp-stats"><span>HP '+(c.hp||0)+'</span><span>ATK '+(c.atk||0)+'</span><span>COST '+(c.atkCost||0)+'\u2299</span></div>'
+    :(c.type==='weapon'?'<div class="cp-stats"><span>+'+(c.atkMod||0)+' ATK</span><span>LVL '+(c.level||0)+'</span></div>'
+    :(c.cost!=null?'<div class="cp-stats"><span>COST '+(c.cost||0)+'\u2299</span></div>':''));
+  el.innerHTML='<img src="'+IMG_BASE+(c.img||'')+'" onerror="this.style.display=\'none\'">'
+    +'<div class="cp-name" style="color:'+fCol+'">'+c.name+'</div>'
+    +'<div class="cp-meta">'+(c.type||'').toUpperCase()+(c.level?' \u2022 LVL '+c.level:'')+(c.faction?' \u2022 '+c.faction.toUpperCase():'')+'</div>'
+    +stats
+    +(c.text?'<div class="cp-text">'+c.text+'</div>':'');
+  el.style.display='block';
+  window.cpMove(ev);
+};
+window.cpMove=function(ev){
+  if(!_cpEl||_cpEl.style.display==='none')return;
+  const W=_cpEl.offsetWidth||300,H=_cpEl.offsetHeight||400;
+  const pad=18;let x=ev.clientX+pad,y=ev.clientY-H/2;
+  if(x+W>window.innerWidth-8)x=ev.clientX-W-pad;
+  y=Math.max(8,Math.min(window.innerHeight-H-8,y));
+  _cpEl.style.left=x+'px';_cpEl.style.top=y+'px';
+};
+window.cpHide=function(){if(_cpEl)_cpEl.style.display='none';};
