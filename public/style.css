@@ -1803,3 +1803,83 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
   .winner-screen h1 { font-size: 44px; }
   .codebox { font-size: 24px; padding: 10px 16px; }
 }
+
+/* ── PASSED badge — shows which players have locked in their pass this level ── */
+.passed-badge{
+  display:inline-block;margin-left:6px;padding:1px 7px;border-radius:9px;
+  font-size:9px;font-weight:800;letter-spacing:1px;vertical-align:middle;
+  background:linear-gradient(180deg,#3d4a5c,#2a3542);color:#9fb8d4;
+  border:1px solid #4a5a70;text-shadow:0 1px 2px rgba(0,0,0,.5);
+}
+
+/* ═══════ ARENA POLISH PACK ═══════ */
+
+/* ── Sweeping turn/level banner (Hearthstone-style) ── */
+.fx-banner{
+  position:fixed;inset:0;z-index:9600;pointer-events:none;
+  display:flex;align-items:center;justify-content:center;
+}
+.fx-banner::before{
+  content:'';position:absolute;left:0;right:0;top:50%;height:92px;transform:translateY(-50%) scaleX(0);
+  background:linear-gradient(90deg,transparent,rgba(240,180,41,.16) 18%,rgba(0,0,0,.82) 40%,rgba(0,0,0,.82) 60%,rgba(240,180,41,.16) 82%,transparent);
+  border-top:1px solid rgba(240,180,41,.55);border-bottom:1px solid rgba(240,180,41,.55);
+  animation:bannerSweep .32s cubic-bezier(.2,.8,.3,1) forwards;
+}
+@keyframes bannerSweep{to{transform:translateY(-50%) scaleX(1);}}
+.fx-banner-inner{position:relative;text-align:center;animation:bannerPop .38s cubic-bezier(.2,1.4,.4,1) both;}
+@keyframes bannerPop{0%{transform:scale(.6);opacity:0;}100%{transform:scale(1);opacity:1;}}
+.fx-banner-title{
+  font-size:34px;font-weight:900;letter-spacing:6px;color:#F0B429;
+  text-shadow:0 0 22px rgba(240,180,41,.65),0 3px 8px #000;
+}
+.fx-banner-sub{margin-top:4px;font-size:12px;letter-spacing:3px;color:#cfd8e3;text-shadow:0 2px 4px #000;}
+.fx-banner.out{animation:bannerOut .5s ease forwards;}
+@keyframes bannerOut{to{opacity:0;}}
+
+/* ── Death clone-ghost: card grayscales, tilts, sinks, fades ── */
+.death-ghost{
+  animation:deathGhost .72s cubic-bezier(.4,0,.8,.4) forwards;
+  filter:grayscale(.2) brightness(1.1);
+}
+@keyframes deathGhost{
+  20%{filter:grayscale(.6) brightness(1.6);transform:scale(1.04);}
+  100%{filter:grayscale(1) brightness(.25);transform:scale(.72) rotate(7deg) translateY(26px);opacity:0;}
+}
+
+/* ── Card entrance: scale-pop with faction glow ── */
+.card-enter{animation:cardEnter .55s cubic-bezier(.2,1.5,.4,1) both;}
+@keyframes cardEnter{
+  0%{transform:scale(.45) translateY(-18px);opacity:0;filter:brightness(2.2);}
+  60%{filter:brightness(1.4);}
+  100%{transform:scale(1) translateY(0);opacity:1;filter:brightness(1);}
+}
+
+/* ── Valid targets pulse (attack + ability targeting) ── */
+.bcard.is-target{animation:tgtPulse 1.1s ease-in-out infinite;cursor:crosshair;}
+@keyframes tgtPulse{
+  0%,100%{box-shadow:0 0 0 2px var(--ap),0 0 14px 2px rgba(240,180,41,.35);}
+  50%{box-shadow:0 0 0 3px var(--ap),0 0 26px 6px rgba(240,180,41,.75);}
+}
+
+/* ── Hover card preview panel (MTG Arena style) ── */
+#cata-cp{
+  position:fixed;z-index:9700;width:290px;pointer-events:none;
+  background:linear-gradient(165deg,#141a24,#0b0f16);
+  border:1px solid #3a4658;border-radius:12px;overflow:hidden;
+  box-shadow:0 14px 44px rgba(0,0,0,.75),0 0 0 1px rgba(240,180,41,.12);
+  animation:cpIn .12s ease-out;
+}
+@keyframes cpIn{from{opacity:0;transform:scale(.96);}to{opacity:1;transform:scale(1);}}
+#cata-cp img{width:100%;display:block;max-height:210px;object-fit:cover;object-position:top;}
+#cata-cp .cp-name{font-size:16px;font-weight:800;padding:8px 12px 0;letter-spacing:.4px;}
+#cata-cp .cp-meta{font-size:9.5px;letter-spacing:2px;color:#8fa0b5;padding:2px 12px 0;}
+#cata-cp .cp-stats{display:flex;gap:10px;padding:7px 12px 0;}
+#cata-cp .cp-stats span{
+  font-size:11px;font-weight:800;color:#F0B429;background:rgba(240,180,41,.09);
+  border:1px solid rgba(240,180,41,.28);padding:2px 8px;border-radius:8px;
+}
+#cata-cp .cp-text{
+  font-size:12px;line-height:1.5;color:#d5dde8;padding:9px 12px 12px;
+  border-top:1px solid rgba(255,255,255,.06);margin-top:8px;white-space:pre-wrap;
+}
+@media (hover:none){#cata-cp{display:none!important;}}
