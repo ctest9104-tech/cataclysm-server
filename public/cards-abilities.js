@@ -3455,3 +3455,30 @@ function makeBlockGrantForWielder(coinCost){
     });
   };
 })();
+
+/* ──────── Execution-audit fixes ──────── */
+
+/* Poof, Worst Enemy: onDamaged had the legacy (gp,uid) signature — the engine passes
+   (gp,ctx) where ctx={pid,src,amount}, so gp.inst[uid] was gp.inst[<object>] = undefined
+   and Poof CRASHED the game every time he took damage. Correct signature: */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq83esbe']||(window.CATA_ABILITIES['render-mq83esbe']={});
+  e.onDamaged=function(gp,ctx){
+    if(!ctx||!ctx.src||!gp.inst[ctx.src])return;
+    const owner=gp.inst[ctx.src].owner;
+    pendTarget(gp,{forId:owner,prompt:'Poof: +1 Attack counter on which Fighter on your team?',
+      filter:i=>i.kind==='fighter'&&i.owner===owner},
+      (g,t)=>{if(t)addCounter(g,t,'atk',1);});
+  };
+})();
+
+/* Stat, Mirage Master: the early block's dynamicAtk returned undefined (it read copy
+   data the clone-swap approach never populates), which NaN-poisoned attack math any
+   time Stat's attack was computed before/without a copy. The clone-swap already
+   preserves Stat's printed Attack on the clone entry, so the base card needs no
+   dynamicAtk at all — remove it. */
+(function(){
+  const e=window.CATA_ABILITIES['render-mq83njzn']||(window.CATA_ABILITIES['render-mq83njzn']={});
+  e.dynamicAtk=undefined;
+  e.dynamicAtkCost=undefined; /* same class of leftover if present */
+})();
