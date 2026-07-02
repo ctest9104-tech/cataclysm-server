@@ -1,4 +1,4 @@
-/* CATACLYSM ARCADE Community Project */
+/* CATACLYSM ARCADEbCommunity Project */
 const SUPABASE_URL='https://mhvtcztuusjuzdjamnfo.supabase.co';
 const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1odnRjenR1dXNqdXpkamFtbmZvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4MzE1MDUsImV4cCI6MjA5NzQwNzUwNX0.b7fq9uditGv3rabTvYeAyGxJxhSAmoVK0TpyfuRBass';
 let _db=null;
@@ -418,7 +418,7 @@ function shuffle(a){a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor
 function poolForFactions(factions){return Object.values(CARDS).filter(c=>c.type!=='token'&&factions.includes(c.faction));}
 
 /* CLIENT STATE */
-let S={screen:'home',name:'',codeInput:'',code:null,myId:null,room:null,busy:false,helpOpen:false,attackPick:null,pendingCb:null,zoomCid:null};
+let S={screen:'home',name:'',codeInput:'',code:null,myId:null,room:null,busy:false,helpOpen:false,attackPick:null,pendingCb:null,zoomCid:null,handSel:null};
 
 /* ENGINE HELPERS */
 function log(gp,msg){gp.log=gp.log||[];gp.log.push(msg);if(gp.log.length>80)gp.log.shift();}
@@ -1307,9 +1307,10 @@ function bCard(gp,uid,opts){
   });
   const badgesHtml=badges.length?`<div class="bcard-badges">${badges.join('')}</div>`:'';
 
-  return`<div class="zone-wrap"><div class="${cls}" data-uid="${uid}" style="border-color:${clickable?'var(--ap)':fCol+'40'}"${clickFn?` onclick="${clickFn}"`:''}
+  return`<div class="zone-wrap"><div class="${cls}" data-uid="${uid}" style="border-color:${clickable?'var(--ap)':fCol+'40'}" onclick="${clickFn?clickFn:`showZoom('${i.cid}')`}"
     onmouseenter="cpShow('${i.cid}',event)" onmousemove="cpMove(event)" onmouseleave="cpHide()"
     oncontextmenu="showZoom('${i.cid}');return false">
+    <button class="card-eye" onclick="event.stopPropagation();cpHide();showZoom('${i.cid}')" title="Read card" aria-label="Read card">&#8981;</button>
     ${artImg(i.cid,'bcard-art')}
     ${badgesHtml}
     ${isToken?'<div class="bcard-token-ribbon">TOKEN</div>':''}
@@ -1333,10 +1334,11 @@ function hCard(gp,uid,myTurn,pend,fanOpts){
   const typeChar=c.type==='fighter'?'F':c.type==='weapon'?'W':c.type==='tactic'?'T':'R';
   const fanStyle=fanOpts?`--hand-rot:${fanOpts.rot};--hand-lift:${fanOpts.lift};`:'';
   const canFortifyHand=myTurn&&!pend&&!S.attackPick&&c.type==='fighter'&&c.hasFortifyResponse&&c.faction==='synth'&&gp.p[S.myId].coins>=2&&hasFortifyHost(gp,S.myId,uid);
-  return`<div class="hcard${playable?'':' unplayable'}" ${fanOpts?`data-hand-pos="${fanOpts.idx}"`:''} style="border-color:${fCol}55;${fanStyle}"
-    ${playable?`onclick="playHandCard('${uid}')"`:''}
+  return`<div class="hcard${playable?'':' unplayable'}${S.handSel===uid?' is-sel':''}" ${fanOpts?`data-hand-pos="${fanOpts.idx}"`:''} style="border-color:${fCol}55;${fanStyle}"
+    onclick="selectHandCard('${uid}')" ${playable?`ondblclick="event.stopPropagation();playHandCard('${uid}')"`:''}
     onmouseenter="cpShow('${i.cid}',event)" onmousemove="cpMove(event)" onmouseleave="cpHide()"
     oncontextmenu="showZoom('${i.cid}');return false">
+    <button class="card-eye" onclick="event.stopPropagation();cpHide();showZoom('${i.cid}')" title="Read card" aria-label="Read card">&#8981;</button>
     ${artImg(i.cid,'hcard-art')}
     <div class="hcard-body">
       <div class="hcard-name" style="color:${fCol}">${c.name}</div>
@@ -1450,11 +1452,22 @@ function playerStrip(gp,pid,isOpp){
 function renderZoom(){
   const cid=S.zoomCid;if(!cid||!CARDS[cid])return'';
   const c=CARDS[cid];
-  /* Full card image only — every detail is printed on the card itself */
+  const fCol=FCOL[c.faction]||'#999';
+  const stats=(c.type==='fighter'||c.type==='boss')
+    ?`<span>HP ${c.hp||0}</span><span>ATK ${c.atk||0}</span><span>COST ${c.atkCost||0}\u2299</span>`
+    :(c.type==='weapon'?`<span>+${c.atkMod||0} ATK</span><span>LVL ${c.level||0}</span>`
+    :(c.cost!=null?`<span>COST ${c.cost||0}\u2299</span>`:''));
   return`<div class="zoom-overlay" onclick="closeZoom()">
     <div class="zoom-full" onclick="event.stopPropagation()">
       ${artImg(cid,'zoom-full-img')}
       <button class="zoom-close" onclick="closeZoom()" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="zoom-info" onclick="event.stopPropagation()">
+      <div class="zi-name" style="color:${fCol}">${c.name}</div>
+      <div class="zi-meta">${(c.type||'').toUpperCase()}${c.level?' \u2022 LVL '+c.level:''}${c.faction?' \u2022 '+c.faction.toUpperCase():''}</div>
+      ${stats?`<div class="zi-stats">${stats}</div>`:''}
+      ${c.text?`<div class="zi-text">${c.text}</div>`:'<div class="zi-text zi-flavor">No rules text.</div>'}
+      <div class="zi-hint">Tap outside to close</div>
     </div>
   </div>`;
 }
@@ -1622,6 +1635,28 @@ function renderPlay(){
     h+=`<div class="action-bar atk">&#9876; Attacking with <b>${CARDS[gp.inst[S.attackPick].cid].name}</b> — click a target above &nbsp; <button class="btn ghost sm" onclick="cancelAttackPick()">Cancel</button></div>`;
   }
 
+  /* ── SELECTED-CARD CONFIRM BAR: tap selects, explicit button plays ── */
+  if(S.handSel&&!myP.hand.includes(S.handSel))S.handSel=null; /* auto-clear stale */
+  if(S.handSel&&!pend&&!S.attackPick){
+    const su=S.handSel;const si=gp.inst[su];const sc=si&&CARDS[si.cid];
+    if(sc){
+      const sCol=FCOL[sc.faction]||'#999';
+      const sCanPlay=myTurn&&gp.p[S.myId].coins>=(sc.cost||0)&&(!sc.level||sc.level<=gp.level);
+      const sInstant=sc.speed==='instant'&&gp.p[S.myId].coins>=(sc.cost||0);
+      const sPlayable=sCanPlay||sInstant;
+      const sCost=(sc.type==='fighter'||sc.type==='weapon')?'FREE':((sc.cost||0)+'\u2299');
+      const sFort=myTurn&&sc.type==='fighter'&&sc.hasFortifyResponse&&sc.faction==='synth'&&gp.p[S.myId].coins>=2&&hasFortifyHost(gp,S.myId,su);
+      h+=`<div class="hand-sel-bar">
+        <div class="hsb-info"><span class="hsb-name" style="color:${sCol}">${sc.name}</span><span class="hsb-cost">${sCost}</span></div>
+        <div class="hsb-btns">
+          ${sPlayable?`<button class="btn hsb-play" onclick="playSelected()">PLAY</button>`:`<span class="hsb-nope">${!myTurn&&!sInstant?'Not your turn':((sc.level||0)>gp.level?'Needs Lvl '+sc.level:'Not enough \u2299')}</span>`}
+          ${sFort?`<button class="btn ghost sm" onclick="fortifySelected()">FORTIFY 2\u2299</button>`:''}
+          <button class="btn ghost sm" onclick="cpHide();showZoom('${si.cid}')">READ</button>
+          <button class="btn ghost sm" onclick="cancelHandSel()">\u2715</button>
+        </div>
+      </div>`;
+    }
+  }
   h+=`<div class="hand-strip">`;
   if(!myP.hand.length)h+='<div class="small" style="margin:auto;color:var(--dim)">Hand is empty</div>';
   const hn=myP.hand.length;const center=(hn-1)/2;const maxRot=hn>1?Math.min(22,hn*3.5):0;
@@ -2399,3 +2434,21 @@ window.cpMove=function(ev){
   _cpEl.style.left=x+'px';_cpEl.style.top=y+'px';
 };
 window.cpHide=function(){if(_cpEl)_cpEl.style.display='none';};
+
+/* ═══════ HAND SELECTION — tap selects, explicit button confirms ═══════ */
+window.selectHandCard=function(u){
+  if(window.cpHide)cpHide();
+  S.handSel=(S.handSel===u?null:u); /* tap again to deselect */
+  render();
+};
+window.cancelHandSel=function(){S.handSel=null;render();};
+window.playSelected=function(){
+  const u=S.handSel;if(!u)return;
+  S.handSel=null;
+  playHandCard(u);
+};
+window.fortifySelected=function(){
+  const u=S.handSel;if(!u)return;
+  S.handSel=null;
+  fortifyFromHand(u);
+};
