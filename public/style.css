@@ -1883,3 +1883,93 @@ input:focus, select:focus { border-color: var(--or); box-shadow: 0 0 0 2px rgba(
   border-top:1px solid rgba(255,255,255,.06);margin-top:8px;white-space:pre-wrap;
 }
 @media (hover:none){#cata-cp{display:none!important;}}
+
+/* ═══════ CARD INSPECT SYSTEM — no more long-press ═══════ */
+
+/* ── The ⌕ inspect button on every card ── */
+.card-eye{
+  position:absolute;top:4px;right:4px;z-index:7;
+  width:24px;height:24px;border-radius:50%;
+  background:rgba(10,14,20,.82);color:#F0B429;
+  border:1px solid rgba(240,180,41,.55);
+  font-size:14px;line-height:1;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  padding:0;opacity:.85;transition:opacity .15s,transform .15s;
+  -webkit-tap-highlight-color:transparent;
+}
+.card-eye:hover{opacity:1;transform:scale(1.15);}
+.hcard .card-eye{width:22px;height:22px;font-size:13px;top:3px;right:3px;}
+
+/* Board cards without another action are tap-to-read */
+.bcard:not(.is-target){cursor:zoom-in;}
+.bcard.is-target{cursor:crosshair;}
+.hcard.unplayable{cursor:zoom-in;}
+
+/* ── Kill native long-press image menus & drag ghosts (Samsung etc.) ── */
+.bcard,.hcard,.zone-wrap{
+  -webkit-touch-callout:none;-webkit-user-select:none;user-select:none;
+}
+.bcard-art,.hcard-art{pointer-events:none;-webkit-user-drag:none;}
+
+/* ── Zoom overlay: image + readable info panel side-by-side / stacked ── */
+.zoom-overlay{
+  display:flex;flex-wrap:wrap;align-items:center;justify-content:center;
+  gap:16px;padding:18px;overflow-y:auto;
+}
+.zoom-info{
+  width:min(420px,92vw);max-height:82vh;overflow-y:auto;
+  background:linear-gradient(165deg,#151b26,#0b0f16);
+  border:1px solid #3a4658;border-radius:14px;
+  box-shadow:0 14px 44px rgba(0,0,0,.75);
+  padding:16px 18px;
+}
+.zi-name{font-size:20px;font-weight:800;letter-spacing:.4px;}
+.zi-meta{font-size:10px;letter-spacing:2.4px;color:#8fa0b5;margin-top:3px;}
+.zi-stats{display:flex;gap:10px;margin-top:10px;flex-wrap:wrap;}
+.zi-stats span{
+  font-size:12px;font-weight:800;color:#F0B429;background:rgba(240,180,41,.09);
+  border:1px solid rgba(240,180,41,.28);padding:3px 10px;border-radius:9px;
+}
+.zi-text{
+  font-size:14px;line-height:1.65;color:#dbe3ee;margin-top:12px;
+  border-top:1px solid rgba(255,255,255,.07);padding-top:12px;white-space:pre-wrap;
+}
+.zi-flavor{color:#7d8b9d;font-style:italic;}
+.zi-hint{margin-top:12px;font-size:10px;letter-spacing:2px;color:#5d6b7d;text-align:center;}
+@media (max-width:760px){
+  .zoom-overlay{flex-direction:column;align-items:center;padding:12px;}
+  .zoom-full{max-width:88vw;}
+  .zoom-info{max-height:none;}
+}
+
+/* ═══════ HAND SELECT-CONFIRM BAR ═══════ */
+.hcard.is-sel{
+  transform:translateY(-26px) scale(1.06)!important;
+  z-index:40;
+  box-shadow:0 0 0 2px #F0B429,0 12px 32px rgba(0,0,0,.7),0 0 24px rgba(240,180,41,.45);
+  border-color:#F0B429!important;
+}
+.hand-sel-bar{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  flex-wrap:wrap;
+  margin:0 10px 6px;padding:8px 12px;
+  background:linear-gradient(90deg,rgba(240,180,41,.10),rgba(20,26,36,.94) 30%,rgba(20,26,36,.94) 70%,rgba(240,180,41,.10));
+  border:1px solid rgba(240,180,41,.4);border-radius:11px;
+  animation:hsbIn .18s cubic-bezier(.2,1.2,.4,1);
+}
+@keyframes hsbIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
+.hsb-info{display:flex;align-items:center;gap:9px;min-width:0;}
+.hsb-name{font-weight:800;font-size:14px;letter-spacing:.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:44vw;}
+.hsb-cost{
+  font-size:11px;font-weight:800;color:#F0B429;background:rgba(240,180,41,.1);
+  border:1px solid rgba(240,180,41,.32);padding:2px 8px;border-radius:8px;flex:none;
+}
+.hsb-btns{display:flex;align-items:center;gap:7px;flex-wrap:wrap;}
+.hsb-play{
+  background:linear-gradient(180deg,#F0B429,#d99a12);color:#000;
+  font-weight:900;letter-spacing:1.5px;padding:7px 22px;border:none;border-radius:9px;
+  box-shadow:0 3px 10px rgba(240,180,41,.4);cursor:pointer;
+  animation:et-pulse 2.2s infinite;
+}
+.hsb-play:active{transform:scale(.96);}
+.hsb-nope{font-size:11px;color:#8fa0b5;letter-spacing:.6px;padding:0 4px;}
